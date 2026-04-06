@@ -108,6 +108,31 @@ export async function patchAdminOrderStatus(
   }
 }
 
+export interface ConfirmDeliveryByQrResponseRaw {
+  order?: AdminOrderRaw | null
+  orderId?: string
+  delivered?: boolean
+  message?: string
+}
+
+/**
+ * Confirma entrega escaneando cualquier QR.
+ * El backend resuelve la orden asociada al QR y la marca como entregada.
+ */
+export async function confirmDeliveryByQr(qrData: string) {
+  const { data } = await api.post<ConfirmDeliveryByQrResponseRaw>(
+    `${ADMIN_ORDERS_PATH}/delivery/confirm-by-qr`,
+    { qrData },
+  )
+
+  return {
+    order: data.order ? mapAdminOrderToOrder(data.order) : null,
+    orderId: data.orderId,
+    delivered: Boolean(data.delivered),
+    message: data.message,
+  }
+}
+
 export async function fetchAdminOrders(params: AdminOrdersListParams) {
   const statusParam =
     params.status &&

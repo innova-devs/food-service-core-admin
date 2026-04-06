@@ -11,7 +11,6 @@ interface OrdersListProps {
   isLoading?: boolean
   error?: string | null
   onRetry?: () => void
-  onMarkDelivered: (order: DeliveryOrder) => void
 }
 
 function OrderCardSkeleton() {
@@ -70,7 +69,6 @@ export function OrdersList({
   isLoading = false,
   error = null,
   onRetry,
-  onMarkDelivered,
 }: OrdersListProps) {
   if (isLoading) {
     return (
@@ -96,7 +94,6 @@ export function OrdersList({
         <OrderCard
           key={order.id}
           order={order}
-          onMarkDelivered={onMarkDelivered}
         />
       ))}
     </div>

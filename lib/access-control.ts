@@ -1,9 +1,10 @@
-export type UserRole = "STAFF" | "ADMIN" | "MANAGER" | "UNKNOWN"
+export type UserRole = "STAFF" | "DELIVERY" | "ADMIN" | "MANAGER" | "UNKNOWN"
 
 function normalizeRole(raw: unknown): UserRole {
   if (typeof raw !== "string") return "UNKNOWN"
   const role = raw.trim().toUpperCase()
   if (role === "STAFF") return "STAFF"
+  if (role === "DELIVERY") return "DELIVERY"
   if (role === "ADMIN") return "ADMIN"
   if (role === "MANAGER") return "MANAGER"
   return "UNKNOWN"
@@ -25,6 +26,9 @@ export function resolveUserRole(payload: Record<string, unknown>): UserRole {
     if (Array.isArray(roles) && roles.some((item) => String(item).toUpperCase() === "STAFF")) {
       return "STAFF"
     }
+    if (Array.isArray(roles) && roles.some((item) => String(item).toUpperCase() === "DELIVERY")) {
+      return "DELIVERY"
+    }
   }
 
   return "UNKNOWN"
@@ -35,8 +39,15 @@ export function canAccessPath(role: UserRole, pathname: string): boolean {
     return pathname === "/check-in" || pathname.startsWith("/check-in/")
   }
 
+  if (role === "DELIVERY") {
+    return pathname === "/delivery" || pathname.startsWith("/delivery/")
+  }
+
   if (pathname === "/check-in" || pathname.startsWith("/check-in/")) {
     return role === "ADMIN" || role === "MANAGER"
+  }
+  if (pathname === "/delivery" || pathname.startsWith("/delivery/")) {
+    return role === "DELIVERY"
   }
 
   return true
@@ -44,5 +55,6 @@ export function canAccessPath(role: UserRole, pathname: string): boolean {
 
 export function defaultPathForRole(role: UserRole): string {
   if (role === "STAFF") return "/check-in"
+  if (role === "DELIVERY") return "/delivery"
   return "/"
 }

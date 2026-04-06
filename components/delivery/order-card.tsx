@@ -1,22 +1,33 @@
 "use client"
 
-import { MapPinIcon, UserIcon, PackageIcon } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { MapPinIcon, UserIcon } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"
+
+export interface DeliveryOrderItem {
+  id: string
+  name: string
+  quantity: number
+}
 
 export interface DeliveryOrder {
   id: string
   customerName: string
+  customerPhone: string
   address: string
   totalPrice: number
   status: "pending" | "out_for_delivery" | "delivered"
-  items: number
+  items: DeliveryOrderItem[]
 }
 
 interface OrderCardProps {
   order: DeliveryOrder
-  onMarkDelivered: (order: DeliveryOrder) => void
 }
 
 const statusConfig = {
@@ -34,7 +45,7 @@ const statusConfig = {
   },
 }
 
-export function OrderCard({ order, onMarkDelivered }: OrderCardProps) {
+export function OrderCard({ order }: OrderCardProps) {
   const status = statusConfig[order.status]
 
   return (
@@ -52,20 +63,17 @@ export function OrderCard({ order, onMarkDelivered }: OrderCardProps) {
 
             {/* Customer info */}
             <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
+              <div className="flex items-start gap-2">
                 <UserIcon className="h-4 w-4 text-muted-foreground shrink-0" />
-                <span className="font-medium">{order.customerName}</span>
+                <div className="flex flex-col">
+                  <span className="font-medium">{order.customerName}</span>
+                  <span className="text-sm text-muted-foreground">{order.customerPhone}</span>
+                </div>
               </div>
               <div className="flex items-start gap-2">
                 <MapPinIcon className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
                 <span className="text-sm text-muted-foreground leading-tight">
                   {order.address}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <PackageIcon className="h-4 w-4 text-muted-foreground shrink-0" />
-                <span className="text-sm text-muted-foreground">
-                  {order.items} {order.items === 1 ? "articulo" : "articulos"}
                 </span>
               </div>
             </div>
@@ -76,18 +84,24 @@ export function OrderCard({ order, onMarkDelivered }: OrderCardProps) {
                 ${order.totalPrice.toLocaleString("es-MX", { minimumFractionDigits: 2 })}
               </span>
             </div>
+
+            <Accordion type="single" collapsible className="w-full">
+              <AccordionItem value="items">
+                <AccordionTrigger className="py-2">Detalle de items</AccordionTrigger>
+                <AccordionContent>
+                  <div className="space-y-2">
+                    {order.items.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between text-sm">
+                        <span className="text-foreground">{item.name}</span>
+                        <span className="text-muted-foreground">x{item.quantity}</span>
+                      </div>
+                    ))}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
           </div>
         </div>
-
-        {/* Action button */}
-        {order.status !== "delivered" && (
-          <Button
-            onClick={() => onMarkDelivered(order)}
-            className="mt-4 w-full h-12 text-base font-medium"
-          >
-            Marcar como entregado
-          </Button>
-        )}
       </CardContent>
     </Card>
   )

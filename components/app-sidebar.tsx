@@ -50,6 +50,7 @@ const navItems: {
     title: "Entregas",
     href: "/delivery",
     icon: Truck,
+    allowedRoles: ["DELIVERY"],
   },
 ]
 
