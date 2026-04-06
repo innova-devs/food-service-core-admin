@@ -98,17 +98,7 @@ function LoginForm() {
       </CardHeader>
       <CardContent>
         <Form {...form}>
-          <form
-            noValidate
-            onSubmitCapture={(event) => {
-              event.preventDefault()
-            }}
-            onSubmit={(event) => {
-              event.preventDefault()
-              void form.handleSubmit(onSubmit)(event)
-            }}
-            className="space-y-4"
-          >
+          <div className="space-y-4">
             <FormField
               control={form.control}
               name="email"
@@ -120,6 +110,12 @@ function LoginForm() {
                       type="email"
                       autoComplete="email"
                       placeholder="tu@empresa.com"
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault()
+                          void form.handleSubmit(onSubmit)()
+                        }
+                      }}
                       {...field}
                     />
                   </FormControl>
@@ -137,6 +133,12 @@ function LoginForm() {
                     <Input
                       type="password"
                       autoComplete="current-password"
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault()
+                          void form.handleSubmit(onSubmit)()
+                        }
+                      }}
                       {...field}
                     />
                   </FormControl>
@@ -150,13 +152,16 @@ function LoginForm() {
               </p>
             ) : null}
             <Button
-              type="submit"
+              type="button"
               className="w-full"
               disabled={form.formState.isSubmitting}
+              onClick={() => {
+                void form.handleSubmit(onSubmit)()
+              }}
             >
               {form.formState.isSubmitting ? "Entrando…" : "Entrar"}
             </Button>
-          </form>
+          </div>
         </Form>
       </CardContent>
     </Card>
