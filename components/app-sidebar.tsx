@@ -16,8 +16,15 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar"
+import { getUserRoleFromCookie } from "@/lib/auth"
+import { canAccessPath, type UserRole } from "@/lib/access-control"
 
-const navItems = [
+const navItems: {
+  title: string
+  href: string
+  icon: typeof LayoutDashboard
+  allowedRoles?: UserRole[]
+}[] = [
   {
     title: "Dashboard",
     href: "/",
@@ -37,11 +44,16 @@ const navItems = [
     title: "Check-in",
     href: "/check-in",
     icon: QrCode,
+    allowedRoles: ["STAFF"],
   },
 ]
 
 export function AppSidebar() {
   const pathname = usePathname()
+  const role = getUserRoleFromCookie()
+  const visibleItems = navItems.filter((item) =>
+    item.allowedRoles ? item.allowedRoles.includes(role) : canAccessPath(role, item.href)
+  )
 
   return (
     <Sidebar>
@@ -58,7 +70,7 @@ export function AppSidebar() {
           <SidebarGroupLabel>Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => (
+              {visibleItems.map((item) => (
                 <SidebarMenuItem key={item.href}>
                   <SidebarMenuButton asChild isActive={pathname === item.href}>
                     <Link href={item.href}>

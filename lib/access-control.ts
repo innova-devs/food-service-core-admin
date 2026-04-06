@@ -1,0 +1,48 @@
+export type UserRole = "STAFF" | "ADMIN" | "MANAGER" | "UNKNOWN"
+
+function normalizeRole(raw: unknown): UserRole {
+  if (typeof raw !== "string") return "UNKNOWN"
+  const role = raw.trim().toUpperCase()
+  if (role === "STAFF") return "STAFF"
+  if (role === "ADMIN") return "ADMIN"
+  if (role === "MANAGER") return "MANAGER"
+  return "UNKNOWN"
+}
+
+export function resolveUserRole(payload: Record<string, unknown>): UserRole {
+  const directRole = normalizeRole(payload.role)
+  if (directRole !== "UNKNOWN") return directRole
+
+  const nestedUser = payload.user
+  if (nestedUser && typeof nestedUser === "object") {
+    const nestedRole = normalizeRole((nestedUser as Record<string, unknown>).role)
+    if (nestedRole !== "UNKNOWN") return nestedRole
+  }
+
+  const realmAccess = payload.realm_access
+  if (realmAccess && typeof realmAccess === "object") {
+    const roles = (realmAccess as Record<string, unknown>).roles
+    if (Array.isArray(roles) && roles.some((item) => String(item).toUpperCase() === "STAFF")) {
+      return "STAFF"
+    }
+  }
+
+  return "UNKNOWN"
+}
+
+export function canAccessPath(role: UserRole, pathname: string): boolean {
+  if (role === "STAFF") {
+    return pathname === "/check-in" || pathname.startsWith("/check-in/")
+  }
+
+  if (pathname === "/check-in" || pathname.startsWith("/check-in/")) {
+    return role === "ADMIN" || role === "MANAGER"
+  }
+
+  return true
+}
+
+export function defaultPathForRole(role: UserRole): string {
+  if (role === "STAFF") return "/check-in"
+  return "/"
+}

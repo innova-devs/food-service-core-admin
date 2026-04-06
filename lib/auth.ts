@@ -1,3 +1,5 @@
+import { resolveUserRole, type UserRole } from "@/lib/access-control"
+
 export const AUTH_COOKIE_NAME = "fs_admin_token"
 
 const MAX_AGE_SEC = 60 * 60 * 24 * 7
@@ -24,4 +26,45 @@ export function resolveAccessToken(data: {
   token?: string
 }): string | undefined {
   return data.accessToken ?? data.token
+}
+
+function decodeBase64Url(input: string): string | null {
+  const normalized = input.replace(/-/g, "+").replace(/_/g, "/")
+  const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4)
+
+  try {
+    if (typeof atob === "function") {
+      return atob(padded)
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+export function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  const [, payloadPart] = token.split(".")
+  if (!payloadPart) return null
+
+  const json = decodeBase64Url(payloadPart)
+  if (!json) return null
+
+  try {
+    const parsed = JSON.parse(json)
+    if (!parsed || typeof parsed !== "object") return null
+    return parsed as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
+export function getUserRoleFromToken(token: string | null | undefined): UserRole {
+  if (!token) return "UNKNOWN"
+  const payload = decodeJwtPayload(token)
+  if (!payload) return "UNKNOWN"
+  return resolveUserRole(payload)
+}
+
+export function getUserRoleFromCookie(): UserRole {
+  return getUserRoleFromToken(getAuthCookie())
 }
