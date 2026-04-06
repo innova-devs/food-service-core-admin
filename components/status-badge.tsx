@@ -17,6 +17,10 @@ const ORDER_STATUS_BADGE: Record<
     label: "En preparación",
     className: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
   },
+  shipped: {
+    label: "Enviado",
+    className: "bg-violet-100 text-violet-900 dark:bg-violet-900/30 dark:text-violet-300",
+  },
   delivered: {
     label: "Entregado",
     className: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
@@ -52,12 +56,13 @@ const RESERVATION_STATUS_BADGE: Record<
     className: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
   },
   cancelled: {
-    label: "Cancelado",
+    label: "Cancelada",
     className: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
   },
+  /** Cancelación por el usuario (backend `closed`). */
   closed: {
-    label: "Cerrada",
-    className: "bg-zinc-200 text-zinc-800 dark:bg-zinc-800/50 dark:text-zinc-300",
+    label: "Cancelada",
+    className: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
   },
 }
 

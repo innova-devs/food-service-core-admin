@@ -14,8 +14,11 @@ import { io, type Socket } from "socket.io-client"
 
 import { getAuthCookie } from "@/lib/auth"
 import { getSocketBaseUrl } from "@/lib/socket-base-url"
+import { ADMIN_ORDER_DELIVERY_LABEL_ES } from "@/lib/constants/orderWorkflow"
 import {
+  isAdminOrderRealtimePayload,
   isAdminReservationRealtimePayload,
+  type AdminOrderRealtimePayload,
   type AdminReservationRealtimePayload,
 } from "@/lib/types/admin-realtime"
 
@@ -31,21 +34,15 @@ export interface AdminNotification {
   read: boolean
 }
 
-export type AdminOrderSocketPayload = {
-  type: string
-  businessId: string
-  orderId: string
-  total?: string
-  currency?: string
-  at: string
-}
-
 type AdminSocketContextValue = {
   isConnected: boolean
   notifications: AdminNotification[]
   badgeCount: number
   removeNotification: (id: string) => void
-  subscribeToNewOrders: (cb: (orderId: string) => void) => () => void
+  /** Evento `admin:order` con payload discriminado (created / status_changed). */
+  subscribeToOrderRealtime: (
+    cb: (payload: AdminOrderRealtimePayload) => void,
+  ) => () => void
   /** Evento `admin:reservation` con payload discriminado (created / cancelled / edit_started). */
   subscribeToReservationRealtime: (
     cb: (payload: AdminReservationRealtimePayload) => void,
@@ -53,6 +50,43 @@ type AdminSocketContextValue = {
 }
 
 const AdminSocketContext = createContext<AdminSocketContextValue | null>(null)
+
+function orderStatusLabelEs(status: string): string {
+  const s = status.toLowerCase()
+  if (s in ADMIN_ORDER_DELIVERY_LABEL_ES) {
+    return ADMIN_ORDER_DELIVERY_LABEL_ES[
+      s as keyof typeof ADMIN_ORDER_DELIVERY_LABEL_ES
+    ]
+  }
+  return status
+}
+
+function notificationTitleForOrder(payload: AdminOrderRealtimePayload): string {
+  switch (payload.type) {
+    case "order.created":
+      return "Nuevo pedido"
+    case "order.status_changed":
+      return "Estado del pedido actualizado"
+    default:
+      return "Pedido"
+  }
+}
+
+function notificationSubtitleForOrder(
+  payload: AdminOrderRealtimePayload,
+): string | undefined {
+  switch (payload.type) {
+    case "order.created":
+      if (payload.total != null && payload.currency) {
+        return `${payload.total} ${payload.currency}`
+      }
+      return payload.total != null ? String(payload.total) : undefined
+    case "order.status_changed":
+      return orderStatusLabelEs(payload.status)
+    default:
+      return undefined
+  }
+}
 
 function notificationTitleForReservation(
   payload: AdminReservationRealtimePayload,
@@ -77,18 +111,23 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
   const [isConnected, setIsConnected] = useState(false)
   const [notifications, setNotifications] = useState<AdminNotification[]>([])
 
-  const orderListenersRef = useRef(new Set<(id: string) => void>())
+  const orderRealtimeListenersRef = useRef(
+    new Set<(payload: AdminOrderRealtimePayload) => void>(),
+  )
   const reservationRealtimeListenersRef = useRef(
     new Set<(payload: AdminReservationRealtimePayload) => void>(),
   )
   const socketRef = useRef<Socket | null>(null)
 
-  const subscribeToNewOrders = useCallback((cb: (orderId: string) => void) => {
-    orderListenersRef.current.add(cb)
-    return () => {
-      orderListenersRef.current.delete(cb)
-    }
-  }, [])
+  const subscribeToOrderRealtime = useCallback(
+    (cb: (payload: AdminOrderRealtimePayload) => void) => {
+      orderRealtimeListenersRef.current.add(cb)
+      return () => {
+        orderRealtimeListenersRef.current.delete(cb)
+      }
+    },
+    [],
+  )
 
   const subscribeToReservationRealtime = useCallback(
     (cb: (payload: AdminReservationRealtimePayload) => void) => {
@@ -150,11 +189,14 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
     socket.on("disconnect", () => setIsConnected(false))
     socket.on("connect_error", () => setIsConnected(false))
 
-    socket.on("admin:order", (p: AdminOrderSocketPayload) => {
-      const orderId = p.orderId
-      orderListenersRef.current.forEach((fn) => {
+    socket.on("admin:order", (raw: unknown) => {
+      if (!isAdminOrderRealtimePayload(raw)) {
+        return
+      }
+      const p = raw
+      orderRealtimeListenersRef.current.forEach((fn) => {
         try {
-          fn(orderId)
+          fn(p)
         } catch {
           /* noop */
         }
@@ -162,20 +204,17 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
 
       const path = pathnameRef.current
       const read = path === "/orders"
-      const subtitle =
-        p.total != null && p.currency
-          ? `${p.total} ${p.currency}`
-          : p.total != null
-            ? String(p.total)
-            : undefined
+      const orderId = p.orderId
+      const title = notificationTitleForOrder(p)
+      const subtitle = notificationSubtitleForOrder(p)
 
       setNotifications((prev) => {
         const next: AdminNotification = {
-          id: `order-${orderId}-${Date.now()}`,
+          id: `${p.type}-${orderId}-${Date.now()}`,
           kind: "order",
           resourceId: orderId,
           at: p.at,
-          title: "Nuevo pedido",
+          title,
           subtitle,
           read,
         }
@@ -230,7 +269,7 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
       notifications,
       badgeCount,
       removeNotification,
-      subscribeToNewOrders,
+      subscribeToOrderRealtime,
       subscribeToReservationRealtime,
     }),
     [
@@ -238,7 +277,7 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
       notifications,
       badgeCount,
       removeNotification,
-      subscribeToNewOrders,
+      subscribeToOrderRealtime,
       subscribeToReservationRealtime,
     ],
   )

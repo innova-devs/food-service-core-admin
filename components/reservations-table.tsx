@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { MoreHorizontal, Check, X, CalendarDays } from "lucide-react"
+import { MoreHorizontal, X, CalendarDays } from "lucide-react"
 
 import {
   Table,
@@ -61,20 +61,25 @@ export function ReservationsTable({
   editingReservationIds = [],
   cancelledFlashIds = [],
 }: ReservationsTableProps) {
-  const [confirmDialog, setConfirmDialog] = useState<{
+  const [cancelDialog, setCancelDialog] = useState<{
     open: boolean
     reservationId: string
-    action: "confirm" | "cancel"
-  }>({ open: false, reservationId: "", action: "confirm" })
+  }>({ open: false, reservationId: "" })
 
-  const handleAction = (reservationId: string, action: "confirm" | "cancel") => {
-    setConfirmDialog({ open: true, reservationId, action })
+  const openCancelDialog = (reservationId: string) => {
+    setCancelDialog({ open: true, reservationId })
   }
 
-  const handleConfirmAction = () => {
-    const newStatus = confirmDialog.action === "confirm" ? "confirmed" : "cancelled"
-    console.log(`Changing reservation ${confirmDialog.reservationId} status to ${newStatus}`)
-    setConfirmDialog({ open: false, reservationId: "", action: "confirm" })
+  const handleConfirmCancel = () => {
+    console.log(
+      `Changing reservation ${cancelDialog.reservationId} status to cancelled`,
+    )
+    setCancelDialog({ open: false, reservationId: "" })
+  }
+
+  const isReservationTerminated = (status: string) => {
+    const s = status.toLowerCase()
+    return s === "cancelled" || s === "closed"
   }
 
   const formatDate = (date: Date) => {
@@ -182,15 +187,8 @@ export function ReservationsTable({
                       <DropdownMenuLabel>Acciones</DropdownMenuLabel>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
-                        onClick={() => handleAction(reservation.id, "confirm")}
-                        disabled={reservation.status === "confirmed"}
-                      >
-                        <Check className="mr-2 size-4" />
-                        Confirmar reserva
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => handleAction(reservation.id, "cancel")}
-                        disabled={reservation.status === "cancelled"}
+                        onClick={() => openCancelDialog(reservation.id)}
+                        disabled={isReservationTerminated(reservation.status)}
                         className="text-destructive focus:text-destructive"
                       >
                         <X className="mr-2 size-4" />
@@ -207,35 +205,23 @@ export function ReservationsTable({
       </div>
 
       <AlertDialog
-        open={confirmDialog.open}
-        onOpenChange={(open) =>
-          setConfirmDialog({ ...confirmDialog, open })
-        }
+        open={cancelDialog.open}
+        onOpenChange={(open) => setCancelDialog((d) => ({ ...d, open }))}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {confirmDialog.action === "confirm"
-                ? "Confirmar reserva"
-                : "Cancelar reserva"}
-            </AlertDialogTitle>
+            <AlertDialogTitle>Cancelar reserva</AlertDialogTitle>
             <AlertDialogDescription>
-              {confirmDialog.action === "confirm"
-                ? "¿Confirmar esta reserva? El cliente puede recibir una notificación."
-                : "¿Cancelar esta reserva? Esta acción no se puede deshacer."}
+              ¿Cancelar esta reserva? Esta acción no se puede deshacer.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Volver</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleConfirmAction}
-              className={
-                confirmDialog.action === "cancel"
-                  ? "bg-destructive text-white hover:bg-destructive/90"
-                  : ""
-              }
+              onClick={handleConfirmCancel}
+              className="bg-destructive text-white hover:bg-destructive/90"
             >
-              {confirmDialog.action === "confirm" ? "Confirmar" : "Cancelar reserva"}
+              Cancelar reserva
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

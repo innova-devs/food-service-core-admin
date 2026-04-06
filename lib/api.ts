@@ -18,6 +18,8 @@ export const api = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
+  /** Cookie HttpOnly `access_token` (si el backend la usa). */
+  withCredentials: true,
 })
 
 api.interceptors.request.use((config) => {

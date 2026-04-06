@@ -39,12 +39,20 @@ const STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "draft", label: "Borrador" },
   { value: "confirmed", label: "Confirmado" },
   { value: "preparing", label: "En preparación" },
+  { value: "shipped", label: "Enviado" },
   { value: "delivered", label: "Entregado" },
   { value: "cancelled", label: "Cancelado" },
 ]
 
+function orderMatchesFilter(orderStatus: string, filter: string): boolean {
+  if (filter === ADMIN_ORDERS_STATUS_ALL) return true
+  return orderStatus.toLowerCase() === filter.toLowerCase()
+}
+
+const ORDER_HIGHLIGHT_MS = 12_000
+
 export default function OrdersPage() {
-  const { subscribeToNewOrders } = useAdminSocket()
+  const { subscribeToOrderRealtime } = useAdminSocket()
   const highlightTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map(),
   )
@@ -118,34 +126,70 @@ export default function OrdersPage() {
     void loadOrders()
   }, [loadOrders])
 
-  useEffect(() => {
-    return subscribeToNewOrders((orderId) => {
-      void (async () => {
-        try {
-          const order = await fetchAdminOrderById(orderId)
-          setOrders((prev) => {
-            const existed = prev.some((o) => o.id === order.id)
-            if (!existed) {
-              setMeta((m) => ({ ...m, total: m.total + 1 }))
-            }
-            return [order, ...prev.filter((o) => o.id !== order.id)]
-          })
-          setHighlightOrderIds((ids) =>
-            ids.includes(orderId) ? ids : [...ids, orderId],
-          )
-          const prevT = highlightTimersRef.current.get(orderId)
-          if (prevT) clearTimeout(prevT)
-          const t = setTimeout(() => {
-            setHighlightOrderIds((ids) => ids.filter((x) => x !== orderId))
-            highlightTimersRef.current.delete(orderId)
-          }, 12000)
-          highlightTimersRef.current.set(orderId, t)
-        } catch {
-          /* noop */
+  const mergeOrderIntoList = useCallback((order: Order) => {
+    setOrders((prev) => {
+      const existed = prev.some((o) => o.id === order.id)
+      const matches = orderMatchesFilter(order.status, statusFilter)
+      if (!matches) {
+        if (existed) {
+          setMeta((m) => ({ ...m, total: Math.max(0, m.total - 1) }))
         }
-      })()
+        return prev.filter((o) => o.id !== order.id)
+      }
+      if (!existed) {
+        setMeta((m) => ({ ...m, total: m.total + 1 }))
+      }
+      return [order, ...prev.filter((o) => o.id !== order.id)]
     })
-  }, [subscribeToNewOrders])
+  }, [statusFilter])
+
+  useEffect(() => {
+    return subscribeToOrderRealtime((payload) => {
+      switch (payload.type) {
+        case "order.created": {
+          const orderId = payload.orderId
+          void (async () => {
+            try {
+              const order = await fetchAdminOrderById(orderId)
+              if (!orderMatchesFilter(order.status, statusFilter)) {
+                return
+              }
+              mergeOrderIntoList(order)
+              setHighlightOrderIds((ids) =>
+                ids.includes(orderId) ? ids : [...ids, orderId],
+              )
+              const prevT = highlightTimersRef.current.get(orderId)
+              if (prevT) clearTimeout(prevT)
+              const t = setTimeout(() => {
+                setHighlightOrderIds((ids) =>
+                  ids.filter((x) => x !== orderId),
+                )
+                highlightTimersRef.current.delete(orderId)
+              }, ORDER_HIGHLIGHT_MS)
+              highlightTimersRef.current.set(orderId, t)
+            } catch {
+              /* noop */
+            }
+          })()
+          break
+        }
+        case "order.status_changed": {
+          const orderId = payload.orderId
+          void (async () => {
+            try {
+              const order = await fetchAdminOrderById(orderId)
+              mergeOrderIntoList(order)
+            } catch {
+              /* noop */
+            }
+          })()
+          break
+        }
+        default:
+          break
+      }
+    })
+  }, [subscribeToOrderRealtime, statusFilter, mergeOrderIntoList])
 
   useEffect(() => {
     return () => {
@@ -232,6 +276,7 @@ export default function OrdersPage() {
         orders={orders}
         isLoading={loading}
         highlightOrderIds={highlightOrderIds}
+        onOrderPatched={mergeOrderIntoList}
       />
 
       {!loading && meta.totalPages > 1 ? (

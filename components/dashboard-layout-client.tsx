@@ -1,5 +1,7 @@
 "use client"
 
+import { Toaster } from "sonner"
+
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { Header } from "@/components/header"
@@ -15,6 +17,7 @@ export function DashboardLayoutClient({
       <AppSidebar />
       <SidebarInset>
         <AdminSocketProvider>
+          <Toaster richColors closeButton position="top-right" />
           <Header />
           <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
         </AdminSocketProvider>

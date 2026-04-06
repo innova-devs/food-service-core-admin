@@ -1,4 +1,5 @@
 import { api } from "@/lib/api"
+import type { AdminOrderDeliveryStatus } from "@/lib/constants/orderWorkflow"
 import type { Order, OrderCustomer, OrderLineItem } from "@/lib/data"
 
 /** Relativo a `NEXT_PUBLIC_API` (si ya incluye `/api`, no repetir `/api` en la ruta). */
@@ -82,6 +83,27 @@ export interface AdminOrderRaw {
 export async function fetchAdminOrderById(id: string) {
   const { data } = await api.get<AdminOrderRaw>(`${ADMIN_ORDERS_PATH}/${id}`)
   return mapAdminOrderToOrder(data)
+}
+
+export interface PatchAdminOrderStatusResponseRaw {
+  order: AdminOrderRaw
+  customerNotified: boolean
+  notificationReason?: string
+}
+
+export async function patchAdminOrderStatus(
+  id: string,
+  status: AdminOrderDeliveryStatus,
+) {
+  const { data } = await api.patch<PatchAdminOrderStatusResponseRaw>(
+    `${ADMIN_ORDERS_PATH}/${id}/status`,
+    { status },
+  )
+  return {
+    order: mapAdminOrderToOrder(data.order),
+    customerNotified: data.customerNotified,
+    notificationReason: data.notificationReason,
+  }
 }
 
 export async function fetchAdminOrders(params: AdminOrdersListParams) {

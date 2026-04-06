@@ -1,7 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { isAxiosError } from "axios"
 import { MoreHorizontal, Eye, RefreshCw, Package } from "lucide-react"
+import { toast } from "sonner"
 
 import {
   Table,
@@ -43,6 +45,12 @@ import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import {
+  ADMIN_ORDER_DELIVERY_LABEL_ES,
+  ADMIN_ORDER_DELIVERY_STATUSES,
+  type AdminOrderDeliveryStatus,
+} from "@/lib/constants/orderWorkflow"
+import { patchAdminOrderStatus } from "@/lib/requests/orders"
+import {
   formatOrderMoney,
   formatShortOrderId,
   orderCustomerLabel,
@@ -55,43 +63,68 @@ interface OrdersTableProps {
   isLoading?: boolean
   /** Filas recibidas por Socket.IO: fondo suave + badge “Nuevo”. */
   highlightOrderIds?: string[]
-}
-
-const STATUS_OPTIONS = [
-  "draft",
-  "confirmed",
-  "preparing",
-  "delivered",
-  "cancelled",
-] as const
-
-const STATUS_LABEL_ES: Record<(typeof STATUS_OPTIONS)[number], string> = {
-  draft: "Borrador",
-  confirmed: "Confirmado",
-  preparing: "En preparación",
-  delivered: "Entregado",
-  cancelled: "Cancelado",
+  /** Tras PATCH de estado operativo (lista alineada con la respuesta del API). */
+  onOrderPatched?: (order: Order) => void
 }
 
 export function OrdersTable({
   orders,
   isLoading,
   highlightOrderIds = [],
+  onOrderPatched,
 }: OrdersTableProps) {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
+  const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null)
 
   const handleViewDetails = (order: Order) => {
     setSelectedOrder(order)
     setDetailsOpen(true)
   }
 
-  const handleStatusChange = (orderId: string, newStatus: string) => {
-    console.log(`Changing order ${orderId} status to ${newStatus}`)
+  const handleDeliveryStatusChange = async (
+    order: Order,
+    newStatus: AdminOrderDeliveryStatus,
+  ) => {
+    if (order.status.toLowerCase() === newStatus) {
+      return
+    }
+    setUpdatingOrderId(order.id)
+    try {
+      const result = await patchAdminOrderStatus(order.id, newStatus)
+      onOrderPatched?.(result.order)
+      setSelectedOrder((prev) =>
+        prev?.id === result.order.id ? result.order : prev,
+      )
+      toast.success("Estado del pedido actualizado")
+      if (!result.customerNotified) {
+        toast.warning(
+          result.notificationReason
+            ? `No se notificó al cliente por WhatsApp: ${result.notificationReason}`
+            : "No se pudo notificar al cliente por WhatsApp.",
+        )
+      }
+    } catch (e) {
+      const msg = isAxiosError(e)
+        ? (e.response?.data as { message?: string })?.message ?? e.message
+        : "Error al actualizar el estado"
+      toast.error(typeof msg === "string" ? msg : "Error al actualizar el estado")
+    } finally {
+      setUpdatingOrderId(null)
+    }
   }
 
   const formatMoney = (amount: number | null, currencyCode: string) =>
     formatOrderMoney(amount, currencyCode)
+
+  useEffect(() => {
+    if (!detailsOpen) return
+    setSelectedOrder((prev) => {
+      if (!prev) return prev
+      const fresh = orders.find((o) => o.id === prev.id)
+      return fresh ?? prev
+    })
+  }, [orders, detailsOpen])
 
   const formatDate = (date: Date) => {
     return new Intl.DateTimeFormat("es-AR", {
@@ -171,7 +204,12 @@ export function OrdersTable({
                 <TableCell>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="size-8">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-8"
+                        disabled={updatingOrderId === order.id}
+                      >
                         <MoreHorizontal className="size-4" />
                         <span className="sr-only">Abrir menú</span>
                       </Button>
@@ -184,17 +222,25 @@ export function OrdersTable({
                         Ver detalle
                       </DropdownMenuItem>
                       <DropdownMenuSub>
-                        <DropdownMenuSubTrigger>
+                        <DropdownMenuSubTrigger
+                          disabled={updatingOrderId === order.id}
+                        >
                           <RefreshCw className="mr-2 size-4" />
-                          Cambiar estado
+                          Cambiar estado de entrega
                         </DropdownMenuSubTrigger>
                         <DropdownMenuSubContent>
-                          {STATUS_OPTIONS.map((s) => (
+                          {ADMIN_ORDER_DELIVERY_STATUSES.map((s) => (
                             <DropdownMenuItem
                               key={s}
-                              onClick={() => handleStatusChange(order.id, s)}
+                              disabled={
+                                updatingOrderId === order.id ||
+                                order.status.toLowerCase() === s
+                              }
+                              onClick={() =>
+                                void handleDeliveryStatusChange(order, s)
+                              }
                             >
-                              {STATUS_LABEL_ES[s]}
+                              {ADMIN_ORDER_DELIVERY_LABEL_ES[s]}
                             </DropdownMenuItem>
                           ))}
                         </DropdownMenuSubContent>
