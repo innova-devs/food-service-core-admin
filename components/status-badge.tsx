@@ -1,3 +1,4 @@
+import { getOrderPaymentStatusLabelEs } from "@/lib/constants/orderWorkflow"
 import { cn } from "@/lib/utils"
 
 /** Mapeo para `orders.status` (string en BD) y valores legacy de la UI. */
@@ -78,6 +79,11 @@ const ORDER_PAYMENT_STATUS_BADGE: Record<
   string,
   { label: string; className: string }
 > = {
+  pending: {
+    label: "Pago pendiente",
+    className:
+      "bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200",
+  },
   unpaid: {
     label: "Sin cobrar",
     className: "bg-orange-100 text-orange-900 dark:bg-orange-950/40 dark:text-orange-200",
@@ -111,22 +117,29 @@ export function OrderStatusBadge({ status }: { status: string }) {
   )
 }
 
-/** Cobro (`payment_status`), independiente de la logística (`OrderStatusBadge`). */
+/** Cobro (`payment_status`), independiente de la logística (`OrderStatusBadge`). Solo lectura. */
 export function OrderPaymentStatusBadge({ paymentStatus }: { paymentStatus: string }) {
-  const key = paymentStatus.toLowerCase()
-  const config = ORDER_PAYMENT_STATUS_BADGE[key] ?? {
-    label: paymentStatus,
-    className:
-      "bg-muted text-muted-foreground dark:bg-muted/80",
+  const raw = paymentStatus?.trim() ?? ""
+  if (!raw) {
+    return (
+      <span className="text-xs text-muted-foreground tabular-nums">—</span>
+    )
   }
+  const key = raw.toLowerCase()
+  const fromMap = ORDER_PAYMENT_STATUS_BADGE[key]
+  const label = fromMap?.label ?? getOrderPaymentStatusLabelEs(raw)
+  const badgeClassName =
+    fromMap?.className ??
+    "bg-muted text-muted-foreground dark:bg-muted/80"
   return (
     <span
       className={cn(
         "inline-flex items-center rounded-full px-2 py-1 text-xs font-medium",
-        config.className,
+        badgeClassName,
       )}
+      title={`Estado de pago: ${label}`}
     >
-      {config.label}
+      {label}
     </span>
   )
 }
