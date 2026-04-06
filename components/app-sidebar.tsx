@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { ShoppingCart, CalendarDays, LayoutDashboard, QrCode, Truck } from "lucide-react"
@@ -56,7 +57,12 @@ const navItems: {
 
 export function AppSidebar() {
   const pathname = usePathname()
-  const role = getUserRoleFromCookie()
+  const [role, setRole] = useState<UserRole>("UNKNOWN")
+
+  useEffect(() => {
+    setRole(getUserRoleFromCookie())
+  }, [])
+
   const visibleItems = navItems.filter((item) =>
     item.allowedRoles ? item.allowedRoles.includes(role) : canAccessPath(role, item.href)
   )

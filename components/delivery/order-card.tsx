@@ -47,6 +47,7 @@ const statusConfig = {
 
 export function OrderCard({ order }: OrderCardProps) {
   const status = statusConfig[order.status]
+  const items = Array.isArray(order.items) ? order.items : []
 
   return (
     <Card className="overflow-hidden">
@@ -90,7 +91,7 @@ export function OrderCard({ order }: OrderCardProps) {
                 <AccordionTrigger className="py-2">Detalle de items</AccordionTrigger>
                 <AccordionContent>
                   <div className="space-y-2">
-                    {order.items.map((item) => (
+                    {items.map((item) => (
                       <div key={item.id} className="flex items-center justify-between text-sm">
                         <span className="text-foreground">{item.name}</span>
                         <span className="text-muted-foreground">x{item.quantity}</span>

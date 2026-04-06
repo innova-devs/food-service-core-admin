@@ -99,8 +99,10 @@ function LoginForm() {
       <CardContent>
         <Form {...form}>
           <form
-            method="post"
             noValidate
+            onSubmitCapture={(event) => {
+              event.preventDefault()
+            }}
             onSubmit={(event) => {
               event.preventDefault()
               void form.handleSubmit(onSubmit)(event)
