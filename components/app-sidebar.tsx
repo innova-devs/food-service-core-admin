@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { ShoppingCart, CalendarDays, LayoutDashboard, QrCode } from "lucide-react"
+import { ShoppingCart, CalendarDays, LayoutDashboard, QrCode, Truck } from "lucide-react"
 
 import {
   Sidebar,
@@ -37,6 +37,11 @@ const navItems = [
     title: "Check-in",
     href: "/check-in",
     icon: QrCode,
+  },
+  {
+    title: "Entregas",
+    href: "/delivery",
+    icon: Truck,
   },
 ]
 
