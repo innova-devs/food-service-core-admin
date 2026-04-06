@@ -1,7 +1,7 @@
 "use client"
 
-import { Suspense, useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
@@ -42,7 +42,6 @@ function safeRedirectPath(from: string | null): string {
 
 function LoginForm() {
   const router = useRouter()
-  const searchParams = useSearchParams()
   const [submitError, setSubmitError] = useState<string | null>(null)
 
   const form = useForm<LoginFormValues>({
@@ -63,7 +62,11 @@ function LoginForm() {
         return
       }
       setAuthCookie(token)
-      const dest = safeRedirectPath(searchParams.get("from"))
+      const from =
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("from")
+          : null
+      const dest = safeRedirectPath(from)
       router.push(dest)
       router.refresh()
     } catch (err) {
@@ -150,18 +153,6 @@ function LoginForm() {
   )
 }
 
-function LoginFallback() {
-  return (
-    <Card className="w-full max-w-md p-8 shadow-lg">
-      <p className="text-center text-muted-foreground">Cargando…</p>
-    </Card>
-  )
-}
-
 export default function LoginPage() {
-  return (
-    <Suspense fallback={<LoginFallback />}>
-      <LoginForm />
-    </Suspense>
-  )
+  return <LoginForm />
 }
