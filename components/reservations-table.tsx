@@ -37,16 +37,23 @@ import {
   EmptyDescription,
   EmptyMedia,
 } from "@/components/ui/empty"
+import { Badge } from "@/components/ui/badge"
 import { ReservationStatusBadge } from "@/components/status-badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import type { Reservation, ReservationStatus } from "@/lib/data"
+import { cn } from "@/lib/utils"
+import type { Reservation } from "@/lib/data"
 
 interface ReservationsTableProps {
   reservations: Reservation[]
   isLoading?: boolean
+  highlightReservationIds?: string[]
 }
 
-export function ReservationsTable({ reservations, isLoading }: ReservationsTableProps) {
+export function ReservationsTable({
+  reservations,
+  isLoading,
+  highlightReservationIds = [],
+}: ReservationsTableProps) {
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean
     reservationId: string
@@ -58,14 +65,13 @@ export function ReservationsTable({ reservations, isLoading }: ReservationsTable
   }
 
   const handleConfirmAction = () => {
-    const newStatus: ReservationStatus = confirmDialog.action === "confirm" ? "confirmed" : "cancelled"
-    // In a real app, this would update the reservation status via API
+    const newStatus = confirmDialog.action === "confirm" ? "confirmed" : "cancelled"
     console.log(`Changing reservation ${confirmDialog.reservationId} status to ${newStatus}`)
     setConfirmDialog({ open: false, reservationId: "", action: "confirm" })
   }
 
   const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat("en-US", {
+    return new Intl.DateTimeFormat("es-AR", {
       weekday: "short",
       month: "short",
       day: "numeric",
@@ -83,9 +89,9 @@ export function ReservationsTable({ reservations, isLoading }: ReservationsTable
           <EmptyMedia variant="icon">
             <CalendarDays />
           </EmptyMedia>
-          <EmptyTitle>No reservations found</EmptyTitle>
+          <EmptyTitle>No hay reservas</EmptyTitle>
           <EmptyDescription>
-            There are no reservations matching your search criteria.
+            No hay reservas que coincidan con los filtros seleccionados.
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -98,23 +104,44 @@ export function ReservationsTable({ reservations, isLoading }: ReservationsTable
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Customer</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead>Time</TableHead>
-              <TableHead>Guests</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead>Cliente</TableHead>
+              <TableHead>Fecha</TableHead>
+              <TableHead>Hora</TableHead>
+              <TableHead>Personas</TableHead>
+              <TableHead>Mesas</TableHead>
+              <TableHead>Estado</TableHead>
               <TableHead className="w-12">
-                <span className="sr-only">Actions</span>
+                <span className="sr-only">Acciones</span>
               </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {reservations.map((reservation) => (
-              <TableRow key={reservation.id}>
-                <TableCell className="font-medium">{reservation.customerName}</TableCell>
+            {reservations.map((reservation) => {
+              const isNew = highlightReservationIds.includes(reservation.id)
+              return (
+              <TableRow
+                key={reservation.id}
+                className={cn(
+                  isNew &&
+                    "bg-emerald-500/[0.07] transition-colors dark:bg-emerald-500/10",
+                )}
+              >
+                <TableCell className="font-medium">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span>{reservation.customerName}</span>
+                    {isNew ? (
+                      <Badge variant="secondary" className="text-[10px] font-normal">
+                        Nuevo
+                      </Badge>
+                    ) : null}
+                  </div>
+                </TableCell>
                 <TableCell>{formatDate(reservation.date)}</TableCell>
                 <TableCell>{reservation.time}</TableCell>
                 <TableCell>{reservation.guests}</TableCell>
+                <TableCell className="max-w-[14rem] text-muted-foreground text-sm">
+                  {reservation.tablesLabel ?? "—"}
+                </TableCell>
                 <TableCell>
                   <ReservationStatusBadge status={reservation.status} />
                 </TableCell>
@@ -123,18 +150,18 @@ export function ReservationsTable({ reservations, isLoading }: ReservationsTable
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" size="icon" className="size-8">
                         <MoreHorizontal className="size-4" />
-                        <span className="sr-only">Open menu</span>
+                        <span className="sr-only">Abrir menú</span>
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                      <DropdownMenuLabel>Acciones</DropdownMenuLabel>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
                         onClick={() => handleAction(reservation.id, "confirm")}
                         disabled={reservation.status === "confirmed"}
                       >
                         <Check className="mr-2 size-4" />
-                        Confirm reservation
+                        Confirmar reserva
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => handleAction(reservation.id, "cancel")}
@@ -142,13 +169,14 @@ export function ReservationsTable({ reservations, isLoading }: ReservationsTable
                         className="text-destructive focus:text-destructive"
                       >
                         <X className="mr-2 size-4" />
-                        Cancel reservation
+                        Cancelar reserva
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TableCell>
               </TableRow>
-            ))}
+              )
+            })}
           </TableBody>
         </Table>
       </div>
@@ -163,17 +191,17 @@ export function ReservationsTable({ reservations, isLoading }: ReservationsTable
           <AlertDialogHeader>
             <AlertDialogTitle>
               {confirmDialog.action === "confirm"
-                ? "Confirm Reservation"
-                : "Cancel Reservation"}
+                ? "Confirmar reserva"
+                : "Cancelar reserva"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirmDialog.action === "confirm"
-                ? "Are you sure you want to confirm this reservation? The customer will be notified."
-                : "Are you sure you want to cancel this reservation? This action cannot be undone."}
+                ? "¿Confirmar esta reserva? El cliente puede recibir una notificación."
+                : "¿Cancelar esta reserva? Esta acción no se puede deshacer."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>Volver</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirmAction}
               className={
@@ -182,7 +210,7 @@ export function ReservationsTable({ reservations, isLoading }: ReservationsTable
                   : ""
               }
             >
-              {confirmDialog.action === "confirm" ? "Confirm" : "Cancel Reservation"}
+              {confirmDialog.action === "confirm" ? "Confirmar" : "Cancelar reserva"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -197,13 +225,14 @@ function ReservationsTableSkeleton() {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Customer</TableHead>
-            <TableHead>Date</TableHead>
-            <TableHead>Time</TableHead>
-            <TableHead>Guests</TableHead>
-            <TableHead>Status</TableHead>
+            <TableHead>Cliente</TableHead>
+            <TableHead>Fecha</TableHead>
+            <TableHead>Hora</TableHead>
+            <TableHead>Personas</TableHead>
+            <TableHead>Mesas</TableHead>
+            <TableHead>Estado</TableHead>
             <TableHead className="w-12">
-              <span className="sr-only">Actions</span>
+              <span className="sr-only">Acciones</span>
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -221,6 +250,9 @@ function ReservationsTableSkeleton() {
               </TableCell>
               <TableCell>
                 <Skeleton className="h-4 w-8" />
+              </TableCell>
+              <TableCell>
+                <Skeleton className="h-4 w-32" />
               </TableCell>
               <TableCell>
                 <Skeleton className="h-6 w-20 rounded-full" />

@@ -15,7 +15,7 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
+            <CardTitle className="text-sm font-medium">Total de pedidos</CardTitle>
             <ShoppingCart className="size-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -26,7 +26,7 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Active Reservations</CardTitle>
+            <CardTitle className="text-sm font-medium">Reservas activas</CardTitle>
             <CalendarDays className="size-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -39,13 +39,13 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Orders</CardTitle>
-            <CardDescription>Manage customer orders</CardDescription>
+            <CardTitle>Pedidos</CardTitle>
+            <CardDescription>Gestiona los pedidos de tus clientes</CardDescription>
           </CardHeader>
           <CardContent>
             <Button asChild variant="outline" className="w-full">
               <Link href="/orders">
-                View Orders
+                Ver pedidos
                 <ArrowRight className="ml-2 size-4" />
               </Link>
             </Button>
@@ -54,13 +54,13 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Reservations</CardTitle>
-            <CardDescription>Manage table reservations</CardDescription>
+            <CardTitle>Reservas</CardTitle>
+            <CardDescription>Gestiona las reservas de mesas</CardDescription>
           </CardHeader>
           <CardContent>
             <Button asChild variant="outline" className="w-full">
               <Link href="/reservations">
-                View Reservations
+                Ver reservas
                 <ArrowRight className="ml-2 size-4" />
               </Link>
             </Button>

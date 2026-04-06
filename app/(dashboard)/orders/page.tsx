@@ -1,54 +1,266 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
-import { Search } from "lucide-react"
+import { useState, useEffect, useCallback, useRef } from "react"
+import { isAxiosError } from "axios"
 
+import { useAdminSocket } from "@/contexts/admin-socket-context"
 import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { OrdersTable } from "@/components/orders-table"
-import { orders as allOrders } from "@/lib/data"
+import type { Order } from "@/lib/data"
+import {
+  ADMIN_ORDERS_STATUS_ALL,
+  fetchAdminOrderById,
+  fetchAdminOrders,
+  mapAdminOrderToOrder,
+} from "@/lib/requests/orders"
+
+function monthBoundsISO() {
+  const now = new Date()
+  const from = new Date(now.getFullYear(), now.getMonth(), 1)
+  const to = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  return {
+    from: from.toISOString().slice(0, 10),
+    to: to.toISOString().slice(0, 10),
+  }
+}
+
+const STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
+  { value: ADMIN_ORDERS_STATUS_ALL, label: "Todos" },
+  { value: "draft", label: "Borrador" },
+  { value: "confirmed", label: "Confirmado" },
+  { value: "preparing", label: "En preparación" },
+  { value: "delivered", label: "Entregado" },
+  { value: "cancelled", label: "Cancelado" },
+]
 
 export default function OrdersPage() {
-  const [search, setSearch] = useState("")
-  const [isLoading, setIsLoading] = useState(true)
+  const { subscribeToNewOrders } = useAdminSocket()
+  const highlightTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map(),
+  )
+  const [highlightOrderIds, setHighlightOrderIds] = useState<string[]>([])
 
-  // Simulate loading state
+  const bounds = monthBoundsISO()
+  const [page, setPage] = useState(1)
+  const [dateFrom, setDateFrom] = useState(bounds.from)
+  const [dateTo, setDateTo] = useState(bounds.to)
+  const [phoneFilter, setPhoneFilter] = useState("")
+  const [debouncedPhone, setDebouncedPhone] = useState("")
+  const [statusFilter, setStatusFilter] = useState<string>(
+    ADMIN_ORDERS_STATUS_ALL,
+  )
+
+  const [orders, setOrders] = useState<Order[]>([])
+  const [meta, setMeta] = useState({
+    total: 0,
+    totalPages: 1,
+    pageSize: 20,
+  })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 1000)
-    return () => clearTimeout(timer)
+    const t = setTimeout(() => setDebouncedPhone(phoneFilter), 400)
+    return () => clearTimeout(t)
+  }, [phoneFilter])
+
+  useEffect(() => {
+    setPage(1)
+  }, [dateFrom, dateTo, debouncedPhone, statusFilter])
+
+  const loadOrders = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await fetchAdminOrders({
+        page,
+        dateFrom,
+        dateTo,
+        customerPhone: debouncedPhone.trim() || undefined,
+        status: statusFilter,
+      })
+      setOrders(data.items.map(mapAdminOrderToOrder))
+      setMeta({
+        total: data.total,
+        totalPages: data.totalPages > 0 ? data.totalPages : 1,
+        pageSize: data.pageSize,
+      })
+    } catch (e) {
+      setOrders([])
+      if (isAxiosError(e)) {
+        const msg =
+          (e.response?.data as { message?: string })?.message ??
+          e.message
+        setError(
+          typeof msg === "string" && msg
+            ? msg
+            : "No se pudieron cargar los pedidos. Revisá la API y la sesión.",
+        )
+      } else {
+        setError("Error inesperado al cargar los pedidos.")
+      }
+    } finally {
+      setLoading(false)
+    }
+  }, [page, dateFrom, dateTo, debouncedPhone, statusFilter])
+
+  useEffect(() => {
+    void loadOrders()
+  }, [loadOrders])
+
+  useEffect(() => {
+    return subscribeToNewOrders((orderId) => {
+      void (async () => {
+        try {
+          const order = await fetchAdminOrderById(orderId)
+          setOrders((prev) => {
+            const existed = prev.some((o) => o.id === order.id)
+            if (!existed) {
+              setMeta((m) => ({ ...m, total: m.total + 1 }))
+            }
+            return [order, ...prev.filter((o) => o.id !== order.id)]
+          })
+          setHighlightOrderIds((ids) =>
+            ids.includes(orderId) ? ids : [...ids, orderId],
+          )
+          const prevT = highlightTimersRef.current.get(orderId)
+          if (prevT) clearTimeout(prevT)
+          const t = setTimeout(() => {
+            setHighlightOrderIds((ids) => ids.filter((x) => x !== orderId))
+            highlightTimersRef.current.delete(orderId)
+          }, 12000)
+          highlightTimersRef.current.set(orderId, t)
+        } catch {
+          /* noop */
+        }
+      })()
+    })
+  }, [subscribeToNewOrders])
+
+  useEffect(() => {
+    return () => {
+      highlightTimersRef.current.forEach((t) => clearTimeout(t))
+    }
   }, [])
 
-  const filteredOrders = useMemo(() => {
-    if (!search.trim()) return allOrders
-
-    const searchLower = search.toLowerCase()
-    return allOrders.filter(
-      (order) =>
-        order.id.toLowerCase().includes(searchLower) ||
-        order.customerName.toLowerCase().includes(searchLower) ||
-        order.status.toLowerCase().includes(searchLower)
-    )
-  }, [search])
+  const canPrev = page > 1
+  const canNext = page < meta.totalPages
 
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Orders</h1>
-        <p className="text-muted-foreground">Manage and track customer orders</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Pedidos</h1>
+        <p className="text-muted-foreground">
+          Consulta y gestiona los pedidos de tus clientes
+        </p>
       </div>
 
-      <div className="flex items-center gap-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+      {error ? (
+        <Alert variant="destructive">
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
+        <div className="grid gap-2">
+          <Label htmlFor="orders-from">Desde</Label>
           <Input
-            placeholder="Search orders..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
+            id="orders-from"
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="w-[11rem]"
+          />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="orders-to">Hasta</Label>
+          <Input
+            id="orders-to"
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="w-[11rem]"
+          />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="orders-status">Estado</Label>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger id="orders-status" className="w-[12rem]">
+              <SelectValue placeholder="Estado" />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUS_FILTER_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="grid min-w-[12rem] flex-1 gap-2">
+          <Label htmlFor="orders-phone">Teléfono cliente</Label>
+          <Input
+            id="orders-phone"
+            type="search"
+            inputMode="tel"
+            autoComplete="off"
+            placeholder="Ej. 549…"
+            value={phoneFilter}
+            onChange={(e) => setPhoneFilter(e.target.value)}
           />
         </div>
       </div>
 
-      <OrdersTable orders={filteredOrders} isLoading={isLoading} />
+      <p className="text-right text-sm text-muted-foreground">
+        {meta.total} pedido{meta.total === 1 ? "" : "s"} · Página {page} de{" "}
+        {meta.totalPages}
+        {meta.pageSize ? ` (${meta.pageSize} por página)` : ""}
+      </p>
+
+      <OrdersTable
+        orders={orders}
+        isLoading={loading}
+        highlightOrderIds={highlightOrderIds}
+      />
+
+      {!loading && meta.totalPages > 1 ? (
+        <div className="flex items-center justify-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!canPrev}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            Anterior
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            {page} / {meta.totalPages}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!canNext}
+            onClick={() =>
+              setPage((p) => Math.min(meta.totalPages, p + 1))
+            }
+          >
+            Siguiente
+          </Button>
+        </div>
+      ) : null}
     </div>
   )
 }

@@ -24,12 +24,12 @@ const navItems = [
     icon: LayoutDashboard,
   },
   {
-    title: "Orders",
+    title: "Pedidos",
     href: "/orders",
     icon: ShoppingCart,
   },
   {
-    title: "Reservations",
+    title: "Reservas",
     href: "/reservations",
     icon: CalendarDays,
   },
