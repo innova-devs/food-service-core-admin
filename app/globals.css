@@ -123,3 +123,12 @@
     @apply bg-background text-foreground;
   }
 }
+
+@keyframes scan {
+  0%, 100% {
+    top: 8px;
+  }
+  50% {
+    top: calc(100% - 10px);
+  }
+}
