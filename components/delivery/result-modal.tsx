@@ -46,12 +46,12 @@ export function ResultModal({
             )}
           </div>
           <DialogTitle className="text-xl">
-            {success ? "Entrega confirmada" : "Codigo QR invalido"}
+            {success ? "Entrega marcada" : "No se pudo marcar la entrega"}
           </DialogTitle>
           <DialogDescription>
             {success
-              ? "El codigo QR ha sido validado correctamente."
-              : "El codigo QR escaneado no corresponde a ningun pedido activo."}
+              ? "La orden fue actualizada correctamente a estado entregado."
+              : "Verifica el QR y vuelve a intentarlo."}
           </DialogDescription>
         </DialogHeader>
 
@@ -90,7 +90,7 @@ export function ResultModal({
               ) : (
                 <>
                   <CheckCircle2Icon className="h-5 w-5" />
-                  Confirmar entrega
+                  Continuar
                 </>
               )}
             </Button>

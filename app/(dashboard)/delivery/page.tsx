@@ -11,9 +11,9 @@ import { DeliveryQrScanner } from "@/components/delivery/delivery-qr-scanner"
 import { ResultModal } from "@/components/delivery/result-modal"
 import type { DeliveryOrder, DeliveryOrderItem } from "@/components/delivery/order-card"
 import {
-  confirmDeliveryByQr,
   fetchAdminOrders,
   mapAdminOrderToOrder,
+  patchAdminOrderStatus,
 } from "@/lib/requests/orders"
 import { summarizeDeliverySnapshot, type Order } from "@/lib/data"
 
@@ -199,27 +199,22 @@ export default function DeliveryPage() {
     setError(null)
 
     try {
-      const result = await confirmDeliveryByQr(data)
-      const orderId = result.order?.id ?? result.orderId
-      if (result.order) {
-        const mappedOrder = mapOrderToDeliveryOrder(result.order)
-        setOrders((prev) => {
-          const withoutCurrent = prev.filter((order) => order.id !== mappedOrder.id)
-          return [mappedOrder, ...withoutCurrent]
-        })
-      } else if (orderId) {
-        setOrders((prev) =>
-          prev.map((order) =>
-            order.id === orderId ? { ...order, status: "delivered" } : order
-          )
-        )
-      } else {
-        await loadOrders()
+      const orderId = data.trim()
+      if (!orderId) {
+        throw new Error("El QR no contiene un id de orden valido.")
       }
+
+      const { order } = await patchAdminOrderStatus(orderId, "delivered")
+      const mappedOrder = mapOrderToDeliveryOrder(order)
+      setOrders((prev) => {
+        const withoutCurrent = prev.filter((current) => current.id !== mappedOrder.id)
+        return [mappedOrder, ...withoutCurrent]
+      })
+
       setFlow({
         step: "result",
         success: true,
-        scannedOrder: result.order ? mapOrderToDeliveryOrder(result.order) : undefined,
+        scannedOrder: mappedOrder,
       })
       setActiveTab("delivered")
     } catch (err) {
@@ -228,10 +223,11 @@ export default function DeliveryPage() {
         setError(
           typeof msg === "string" && msg
             ? msg
-            : "No se pudo marcar la entrega con el QR escaneado.",
+            : "No se pudo marcar la orden como entregada.",
         )
       } else {
-        setError("No se pudo marcar la entrega con el QR escaneado.")
+        const msg = err instanceof Error ? err.message : "No se pudo marcar la orden como entregada."
+        setError(msg)
       }
       setFlow({ step: "result", success: false })
     } finally {
