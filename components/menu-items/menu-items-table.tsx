@@ -29,18 +29,19 @@ import type { MenuItem } from "./types"
 interface MenuItemsTableProps {
   items: MenuItem[]
   isLoading?: boolean
-  onItemDeleted?: (id: string) => void
+  onDeleteItem?: (item: MenuItem) => Promise<void> | void
 }
 
 export function MenuItemsTable({
   items,
   isLoading,
-  onItemDeleted,
+  onDeleteItem,
 }: MenuItemsTableProps) {
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [deleteItem, setDeleteItem] = useState<MenuItem | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   const handleViewDetails = (item: MenuItem) => {
     setSelectedItem(item)
@@ -56,13 +57,16 @@ export function MenuItemsTable({
     setDeleteDialogOpen(true)
   }
 
-  const handleConfirmDelete = () => {
-    if (deleteItem) {
-      onItemDeleted?.(deleteItem.id)
-      toast.success(`"${deleteItem.name}" eliminado correctamente`)
+  const handleConfirmDelete = async () => {
+    if (!deleteItem) return
+    try {
+      setDeleting(true)
+      await onDeleteItem?.(deleteItem)
+      setDeleteDialogOpen(false)
+      setDeleteItem(null)
+    } finally {
+      setDeleting(false)
     }
-    setDeleteDialogOpen(false)
-    setDeleteItem(null)
   }
 
   if (isLoading) {
@@ -103,7 +107,6 @@ export function MenuItemsTable({
               <TableHead>Disponibilidad</TableHead>
               <TableHead>Destacado</TableHead>
               <TableHead className="text-center">Porciones</TableHead>
-              <TableHead>Fecha creación</TableHead>
               <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
           </TableHeader>
@@ -130,6 +133,7 @@ export function MenuItemsTable({
       <ConfirmDeleteDialog
         item={deleteItem}
         open={deleteDialogOpen}
+        isLoading={deleting}
         onOpenChange={setDeleteDialogOpen}
         onConfirm={handleConfirmDelete}
       />
@@ -148,7 +152,6 @@ function MenuItemsTableSkeleton() {
             <TableHead>Disponibilidad</TableHead>
             <TableHead>Destacado</TableHead>
             <TableHead className="text-center">Porciones</TableHead>
-            <TableHead>Fecha creación</TableHead>
             <TableHead className="text-right">Acciones</TableHead>
           </TableRow>
         </TableHeader>
@@ -172,9 +175,6 @@ function MenuItemsTableSkeleton() {
               </TableCell>
               <TableCell>
                 <Skeleton className="mx-auto h-4 w-8" />
-              </TableCell>
-              <TableCell>
-                <Skeleton className="h-4 w-24" />
               </TableCell>
               <TableCell className="text-right">
                 <div className="flex items-center justify-end gap-1">
