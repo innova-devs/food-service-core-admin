@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { UtensilsCrossed, Plus } from "lucide-react"
 import { toast } from "sonner"
+import Link from "next/link"
 
 import {
   Table,
@@ -47,10 +48,6 @@ export function MenuItemsTable({
     setDetailsOpen(true)
   }
 
-  const handleEdit = (item: MenuItem) => {
-    toast.info(`Editar "${item.name}" - Funcionalidad próximamente`)
-  }
-
   const handleDeleteClick = (item: MenuItem) => {
     setDeleteItem(item)
     setDeleteDialogOpen(true)
@@ -83,9 +80,11 @@ export function MenuItemsTable({
           </EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
-          <Button>
-            <Plus className="mr-2 size-4" />
-            Crear producto
+          <Button asChild>
+            <Link href="/menu-items/new">
+              <Plus className="mr-2 size-4" />
+              Crear producto
+            </Link>
           </Button>
         </EmptyContent>
       </Empty>
@@ -113,7 +112,6 @@ export function MenuItemsTable({
                 key={item.id}
                 item={item}
                 onViewDetails={handleViewDetails}
-                onEdit={handleEdit}
                 onDelete={handleDeleteClick}
               />
             ))}

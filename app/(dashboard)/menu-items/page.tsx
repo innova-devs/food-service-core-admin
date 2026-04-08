@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Plus } from "lucide-react"
-import { toast } from "sonner"
+import Link from "next/link"
 
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -150,10 +150,6 @@ export default function MenuItemsPage() {
     setItems((prev) => prev.filter((item) => item.id !== id))
   }
 
-  const handleCreateNew = () => {
-    toast.info("Crear nuevo producto - Funcionalidad próximamente")
-  }
-
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-start justify-between gap-4">
@@ -165,9 +161,11 @@ export default function MenuItemsPage() {
             Administra los productos disponibles en tu menú
           </p>
         </div>
-        <Button onClick={handleCreateNew}>
-          <Plus className="mr-2 size-4" />
-          Nuevo producto
+        <Button asChild>
+          <Link href="/menu-items/new">
+            <Plus className="mr-2 size-4" />
+            Nuevo producto
+          </Link>
         </Button>
       </div>
 
