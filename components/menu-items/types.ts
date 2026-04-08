@@ -6,6 +6,7 @@ export interface MenuItem {
   categoryName?: string | null
   menuCategoryId?: string | null
   menuCategoryName?: string | null
+  menuCategoryTag?: string | null
   imageUrl: string | null
   available: boolean
   featured: boolean

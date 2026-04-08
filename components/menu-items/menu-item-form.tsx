@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { ArrowLeft, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import Link from "next/link"
+import { isAxiosError } from "axios"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -21,15 +22,12 @@ import { InputField } from "./input-field"
 import { ToggleSwitch } from "./toggle-switch"
 import { ImageUploader } from "./image-uploader"
 import type { MenuItem } from "./types"
-
-// Mock categories
-const CATEGORIES = [
-  { id: "cat-1", name: "Platos principales" },
-  { id: "cat-2", name: "Ensaladas" },
-  { id: "cat-3", name: "Entradas" },
-  { id: "cat-4", name: "Postres" },
-  { id: "cat-5", name: "Bebidas" },
-]
+import {
+  createAdminMenuItem,
+  fetchAdminMenuItemById,
+  fetchAdminMenuItems,
+  patchAdminMenuItem,
+} from "@/lib/requests/menu-items"
 
 interface MenuItemFormData {
   name: string
@@ -42,6 +40,11 @@ interface MenuItemFormData {
   ingredientsNotes: string
   preparation: string
   imageUrl: string | null
+}
+
+interface ProductCategoryOption {
+  id: string
+  name: string
 }
 
 interface MenuItemFormProps {
@@ -66,56 +69,66 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
   const router = useRouter()
   const [formData, setFormData] = useState<MenuItemFormData>(initialFormData)
   const [errors, setErrors] = useState<Partial<Record<keyof MenuItemFormData, string>>>({})
-  const [isLoading, setIsLoading] = useState(mode === "edit")
+  const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [categories, setCategories] = useState<ProductCategoryOption[]>([])
 
-  // Load item data for edit mode
   useEffect(() => {
-    if (mode === "edit" && itemId) {
-      const loadItem = async () => {
-        setIsLoading(true)
-        try {
-          // Simulate API call
-          await new Promise((resolve) => setTimeout(resolve, 800))
-          
-          // Mock data for demo
-          const mockItem: MenuItem = {
-            id: itemId,
-            name: "Milanesa de ternera con papas fritas",
-            description: "Clásica milanesa de ternera empanizada, acompañada de papas fritas caseras crujientes.",
-            categoryId: "cat-1",
-            categoryName: "Platos principales",
-            imageUrl: "https://images.unsplash.com/photo-1632778149955-e80f8ceca2e8?w=400&h=300&fit=crop",
-            available: true,
-            featured: true,
-            servesPeople: 2,
-            ingredients: "Ternera, huevo, pan rallado, papas, aceite, sal",
-            ingredientsNotes: "Contiene gluten. Puede prepararse sin TACC bajo pedido.",
-            preparation: "1. Filetear la carne y salpimentar.\n2. Pasar por huevo batido y luego por pan rallado.\n3. Freír en aceite caliente hasta dorar.\n4. Servir con papas fritas caseras.",
-            createdAt: new Date(),
-          }
+    const load = async () => {
+      setIsLoading(true)
+      try {
+        const [itemsData, item] = await Promise.all([
+          fetchAdminMenuItems({
+            page: 1,
+            pageSize: 100,
+            includeUnavailable: true,
+          }),
+          mode === "edit" && itemId
+            ? fetchAdminMenuItemById(itemId)
+            : Promise.resolve(null),
+        ])
 
-          setFormData({
-            name: mockItem.name,
-            description: mockItem.description || "",
-            categoryId: mockItem.categoryId || "",
-            available: mockItem.available,
-            featured: mockItem.featured,
-            servesPeople: mockItem.servesPeople?.toString() || "",
-            ingredients: mockItem.ingredients || "",
-            ingredientsNotes: mockItem.ingredientsNotes || "",
-            preparation: mockItem.preparation || "",
-            imageUrl: mockItem.imageUrl,
-          })
-        } catch {
-          toast.error("Error al cargar el producto")
-          router.push("/menu-items")
-        } finally {
-          setIsLoading(false)
+        const categoryMap = new Map<string, ProductCategoryOption>()
+        for (const x of itemsData.items) {
+          const id = x.categoryId ?? ""
+          const name = x.categoryName ?? ""
+          if (id && name && !categoryMap.has(id)) {
+            categoryMap.set(id, { id, name })
+          }
         }
+        if (item?.categoryId && item.categoryName && !categoryMap.has(item.categoryId)) {
+          categoryMap.set(item.categoryId, {
+            id: item.categoryId,
+            name: item.categoryName,
+          })
+        }
+        setCategories(Array.from(categoryMap.values()))
+
+        if (item) {
+          setFormData({
+            name: item.name,
+            description: item.description || "",
+            categoryId: item.categoryId || "",
+            available: item.available,
+            featured: item.featured,
+            servesPeople: item.servesPeople?.toString() || "",
+            ingredients: item.ingredients || "",
+            ingredientsNotes: item.ingredientsNotes || "",
+            preparation: item.preparation || "",
+            imageUrl: item.imageUrl,
+          })
+        }        
+      } catch (e) {
+        const msg = isAxiosError(e)
+          ? (e.response?.data as { message?: string })?.message ?? e.message
+          : "Error al cargar el formulario"
+        toast.error(typeof msg === "string" ? msg : "Error al cargar el formulario")
+        router.push("/menu-items")
+      } finally {
+        setIsLoading(false)
       }
-      void loadItem()
     }
+    void load()
   }, [mode, itemId, router])
 
   const updateField = <K extends keyof MenuItemFormData>(
@@ -155,8 +168,26 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
     setIsSaving(true)
 
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      const payload = {
+        name: formData.name.trim(),
+        description: formData.description.trim() || null,
+        categoryId: formData.categoryId,
+        isAvailable: formData.available,
+        isFeatured: formData.featured,
+        servesPeople: formData.servesPeople.trim()
+          ? Number(formData.servesPeople)
+          : null,
+        ingredients: formData.ingredients.trim() || null,
+        ingredientsNotes: formData.ingredientsNotes.trim() || null,
+        preparation: formData.preparation.trim() || null,
+        imageUrl: formData.imageUrl,
+      }
+
+      if (mode === "create") {
+        await createAdminMenuItem(payload)
+      } else if (itemId) {
+        await patchAdminMenuItem(itemId, payload)
+      }
 
       toast.success(
         mode === "create"
@@ -164,8 +195,12 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
           : "Cambios guardados correctamente"
       )
       router.push("/menu-items")
-    } catch {
-      toast.error("Error al guardar el producto")
+      router.refresh()
+    } catch (e) {
+      const msg = isAxiosError(e)
+        ? (e.response?.data as { message?: string })?.message ?? e.message
+        : "Error al guardar el producto"
+      toast.error(typeof msg === "string" ? msg : "Error al guardar el producto")
     } finally {
       setIsSaving(false)
     }
@@ -244,7 +279,7 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
                   <SelectValue placeholder="Selecciona una categoría" />
                 </SelectTrigger>
                 <SelectContent>
-                  {CATEGORIES.map((category) => (
+                  {categories.map((category) => (
                     <SelectItem key={category.id} value={category.id}>
                       {category.name}
                     </SelectItem>
@@ -255,6 +290,7 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
                 <p className="text-sm text-destructive">{errors.categoryId}</p>
               )}
             </div>
+
           </FormSection>
 
           {/* Content Details */}

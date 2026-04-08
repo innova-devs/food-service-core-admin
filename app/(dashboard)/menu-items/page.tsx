@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react"
 import { isAxiosError } from "axios"
 import { Plus } from "lucide-react"
 import Link from "next/link"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -76,10 +77,6 @@ export default function MenuItemsPage() {
     setTotal((prev) => Math.max(0, prev - 1))
     toast.success(`"${item.name}" eliminado correctamente`)
   }, [])
-
-  const handleCreateNew = () => {
-    toast.info("Crear nuevo producto - Funcionalidad próximamente")
-  }
 
   const filteredItems = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()

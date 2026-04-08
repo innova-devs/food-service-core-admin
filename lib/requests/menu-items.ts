@@ -16,6 +16,7 @@ export interface UpsertAdminMenuItemInput {
   name?: string
   description?: string | null
   categoryId?: string | null
+  menuCategoryId?: string | null
   imageUrl?: string | null
   isAvailable?: boolean
   isFeatured?: boolean
@@ -28,6 +29,9 @@ export interface UpsertAdminMenuItemInput {
 interface AdminMenuCategoryRaw {
   id?: string | null
   name?: string | null
+  tag?: string | null
+  category_tag?: string | null
+  categoryTag?: string | null
 }
 
 interface AdminMenuItemRaw {
@@ -43,6 +47,12 @@ interface AdminMenuItemRaw {
   } | null
   menu_category?: AdminMenuCategoryRaw | null
   menuCategory?: AdminMenuCategoryRaw | null
+  menu_category_id?: string | null
+  menuCategoryId?: string | null
+  menu_category_name?: string | null
+  menuCategoryName?: string | null
+  category_tag?: string | null
+  categoryTag?: string | null
   image?: string | null
   image_url?: string | null
   imageUrl?: string | null
@@ -79,6 +89,9 @@ export interface AdminMenuItemsListResponse {
 interface MenuCategoryOptionRaw {
   id?: string
   name?: string
+  tag?: string
+  category_tag?: string
+  categoryTag?: string
 }
 
 interface AdminMenuCategoriesOptionsResponseRaw {
@@ -88,6 +101,25 @@ interface AdminMenuCategoriesOptionsResponseRaw {
 export interface MenuCategoryOption {
   id: string
   name: string
+  tag?: string | null
+}
+
+function normalizeCategoryName(value: string | null | undefined): string {
+  return (value ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+}
+
+function inferCategoryTagFromName(name: string | null | undefined): string | null {
+  const n = normalizeCategoryName(name)
+  if (!n) return null
+  if (n.includes("entrada")) return "STARTER"
+  if (n.includes("plato")) return "MAIN"
+  if (n.includes("bebida")) return "DRINK"
+  if (n.includes("postre")) return "DESSERT"
+  return null
 }
 
 function toStringOrNull(value: unknown): string | null {
@@ -109,8 +141,22 @@ function mapAdminMenuItem(raw: AdminMenuItemRaw): MenuItem {
     description: toStringOrNull(raw.description),
     categoryId: toStringOrNull(raw.categoryId ?? raw.category_id),
     categoryName: toStringOrNull(raw.categoryName ?? raw.category?.name),
-    menuCategoryId: toStringOrNull(menuCategory?.id ?? raw.categoryId ?? raw.category_id),
-    menuCategoryName: toStringOrNull(menuCategory?.name),
+    menuCategoryId: toStringOrNull(
+      menuCategory?.id ?? raw.menuCategoryId ?? raw.menu_category_id,
+    ),
+    menuCategoryName: toStringOrNull(
+      menuCategory?.name ?? raw.menuCategoryName ?? raw.menu_category_name,
+    ),
+    menuCategoryTag: toStringOrNull(
+      raw.categoryTag ??
+        raw.category_tag ??
+        menuCategory?.categoryTag ??
+        menuCategory?.category_tag ??
+        menuCategory?.tag ??
+        inferCategoryTagFromName(
+          menuCategory?.name ?? raw.menuCategoryName ?? raw.menu_category_name,
+        ),
+    ),
     imageUrl: toStringOrNull(raw.imageUrl ?? raw.image_url ?? raw.image),
     available: toBoolean(raw.isAvailable ?? raw.is_available, true),
     featured: toBoolean(raw.isFeatured ?? raw.is_featured, false),
@@ -169,6 +215,14 @@ export async function fetchAdminMenuCategoriesOptions(): Promise<
         .map((it) => ({
           id: typeof it.id === "string" ? it.id : "",
           name: typeof it.name === "string" ? it.name : "",
+          tag:
+            typeof it.categoryTag === "string"
+              ? it.categoryTag
+              : typeof it.category_tag === "string"
+                ? it.category_tag
+                : typeof it.tag === "string"
+                  ? it.tag
+                  : inferCategoryTagFromName(it.name),
         }))
         .filter((it) => it.id && it.name)
     : []
@@ -178,12 +232,27 @@ export async function deleteAdminMenuItem(id: string): Promise<void> {
   await api.delete(`${ADMIN_MENU_ITEMS_PATH}/${id}`)
 }
 
+export async function fetchAdminMenuItemById(id: string): Promise<MenuItem> {
+  const { data } = await api.get<AdminMenuItemRaw>(`${ADMIN_MENU_ITEMS_PATH}/${id}`)
+  return mapAdminMenuItem(data)
+}
+
 function toApiPayload(input: UpsertAdminMenuItemInput): Record<string, unknown> {
   return {
     ...(input.name != null ? { name: input.name } : {}),
     ...(input.description !== undefined ? { description: input.description } : {}),
     ...(input.categoryId !== undefined ? { categoryId: input.categoryId } : {}),
-    ...(input.imageUrl !== undefined ? { imageUrl: input.imageUrl } : {}),
+    ...(input.menuCategoryId !== undefined
+      ? {
+          menuCategoryId: input.menuCategoryId,
+          menu_category_id: input.menuCategoryId,
+          menuCategory: input.menuCategoryId,
+          menu_category: input.menuCategoryId,
+        }
+      : {}),
+    ...(input.imageUrl !== undefined
+      ? { imageUrl: input.imageUrl, image: input.imageUrl }
+      : {}),
     ...(input.isAvailable !== undefined ? { isAvailable: input.isAvailable } : {}),
     ...(input.isFeatured !== undefined ? { isFeatured: input.isFeatured } : {}),
     ...(input.servesPeople !== undefined ? { servesPeople: input.servesPeople } : {}),

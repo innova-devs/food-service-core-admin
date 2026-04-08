@@ -22,6 +22,22 @@ export function MenuItemDetailsModal({
   open,
   onOpenChange,
 }: MenuItemDetailsModalProps) {
+  const sectionByTag: Record<string, string> = {
+    STARTER: "Entradas",
+    MAIN: "Platos fuertes",
+    DRINK: "Bebidas",
+    DESSERT: "Postres",
+  }
+
+  const sectionLabel =
+    item?.menuCategoryName &&
+    item.menuCategoryName !== item.categoryName
+      ? item.menuCategoryName
+      : item?.menuCategoryTag
+        ? sectionByTag[item.menuCategoryTag.toUpperCase()] ??
+          item.menuCategoryTag
+        : null
+
   const formatDate = (date: Date) => {
     return new Intl.DateTimeFormat("es-AR", {
       month: "short",
@@ -68,6 +84,12 @@ export function MenuItemDetailsModal({
               <p className="text-sm text-muted-foreground">Categoría</p>
               <p className="mt-1 font-medium">
                 {item.categoryName ?? item.categoryId ?? "Sin categoría"}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Sección del menú</p>
+              <p className="mt-1 font-medium">
+                {sectionLabel ?? "Sin sección"}
               </p>
             </div>
             <div>
