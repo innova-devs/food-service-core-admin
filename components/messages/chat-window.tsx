@@ -1,10 +1,10 @@
 "use client"
 
 import { useEffect, useRef } from "react"
-import { Phone, Video, MoreVertical } from "lucide-react"
+import { Bot, Loader2 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
+import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
 import { MessageBubble, type Message } from "./message-bubble"
 import { MessageInput } from "./message-input"
 import type { ChatItemData } from "./chat-item"
@@ -13,9 +13,19 @@ interface ChatWindowProps {
   chat: ChatItemData
   messages: Message[]
   onSendMessage: (message: string) => void
+  botEnabled: boolean
+  isTogglingBot?: boolean
+  onToggleBot: (enabled: boolean) => void
 }
 
-export function ChatWindow({ chat, messages, onSendMessage }: ChatWindowProps) {
+export function ChatWindow({
+  chat,
+  messages,
+  onSendMessage,
+  botEnabled,
+  isTogglingBot = false,
+  onToggleBot,
+}: ChatWindowProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -25,7 +35,7 @@ export function ChatWindow({ chat, messages, onSendMessage }: ChatWindowProps) {
   }, [messages])
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       {/* Chat Header */}
       <div className="flex items-center justify-between border-b bg-background px-4 py-3">
         <div className="flex items-center gap-3">
@@ -49,33 +59,43 @@ export function ChatWindow({ chat, messages, onSendMessage }: ChatWindowProps) {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" className="text-muted-foreground">
-            <Phone className="size-4" />
-            <span className="sr-only">Llamar</span>
-          </Button>
-          <Button variant="ghost" size="icon" className="text-muted-foreground">
-            <Video className="size-4" />
-            <span className="sr-only">Videollamada</span>
-          </Button>
-          <Button variant="ghost" size="icon" className="text-muted-foreground">
-            <MoreVertical className="size-4" />
-            <span className="sr-only">Mas opciones</span>
-          </Button>
+        <div className="flex items-center gap-2">
+          <Badge variant={botEnabled ? "default" : "secondary"}>
+            {botEnabled ? "Bot activo" : "Modo humano"}
+          </Badge>
+          {isTogglingBot ? (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <Loader2 className="size-3 animate-spin" />
+              Guardando...
+            </span>
+          ) : null}
+          <div className="flex items-center gap-2 rounded-md border px-2 py-1">
+            <Bot className="size-4 text-muted-foreground" />
+            <Switch
+              checked={botEnabled}
+              onCheckedChange={onToggleBot}
+              disabled={isTogglingBot}
+              aria-label="Alternar bot de conversación"
+            />
+          </div>
         </div>
       </div>
 
       {/* Messages Area */}
-      <ScrollArea className="flex-1 bg-muted/30">
-        <div ref={scrollRef} className="flex flex-col gap-3 p-4">
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-scroll bg-muted/30 p-4"
+        style={{ scrollbarGutter: "stable" }}
+      >
+        <div className="flex min-h-full flex-col gap-3">
           {messages.map((message) => (
             <MessageBubble key={message.id} message={message} />
           ))}
         </div>
-      </ScrollArea>
+      </div>
 
       {/* Message Input */}
-      <MessageInput onSendMessage={onSendMessage} />
+      {!botEnabled ? <MessageInput onSendMessage={onSendMessage} /> : null}
     </div>
   )
 }

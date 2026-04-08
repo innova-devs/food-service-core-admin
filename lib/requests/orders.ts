@@ -209,7 +209,7 @@ export function mapAdminOrderToOrder(raw: AdminOrderRaw): Order {
     customerId: raw.customer_id,
     conversationId: raw.conversation_id,
     status: raw.status,
-    paymentStatus: raw.payment_status ?? "deferred",
+    paymentStatus: raw.payment_status ?? "unpaid",
     currencyCode: raw.currency_code,
     totalAmount: parseDecimal(raw.total_amount),
     createdAt: new Date(raw.created_at),

@@ -49,13 +49,8 @@ const LEGACY_ORDER_STATUS_LABEL_ES: Record<string, string> = {
   completed: "Completado",
 }
 
-/** Cobro (`orders.payment_status`), independiente de `status`. Solo lectura en este panel. */
-export const ORDER_PAYMENT_STATUSES = [
-  "pending",
-  "unpaid",
-  "paid",
-  "deferred",
-] as const
+/** Cobro (`orders.payment_status`): valores actuales del backend. */
+export const ORDER_PAYMENT_STATUSES = ["paid", "unpaid"] as const
 
 export type OrderPaymentStatus = (typeof ORDER_PAYMENT_STATUSES)[number]
 
@@ -63,9 +58,13 @@ export const ORDER_PAYMENT_STATUS_LABEL_ES: Record<
   OrderPaymentStatus,
   string
 > = {
-  pending: "Pago pendiente",
-  unpaid: "Sin cobrar",
-  paid: "Cobrado",
+  paid: "Pagado",
+  unpaid: "Pendiente de pago",
+}
+
+/** Valores legacy que aún pueden aparecer en datos viejos. */
+const LEGACY_ORDER_PAYMENT_LABEL_ES: Record<string, string> = {
+  pending: "Pendiente de pago",
   deferred: "Pago al entregar",
 }
 
@@ -75,7 +74,7 @@ export function getOrderPaymentStatusLabelEs(paymentStatus: string): string {
   if (s in ORDER_PAYMENT_STATUS_LABEL_ES) {
     return ORDER_PAYMENT_STATUS_LABEL_ES[s as OrderPaymentStatus]
   }
-  return paymentStatus
+  return LEGACY_ORDER_PAYMENT_LABEL_ES[s] ?? paymentStatus
 }
 
 /** Texto para badge / notificaciones de `status`. */

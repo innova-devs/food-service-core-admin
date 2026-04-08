@@ -79,18 +79,20 @@ const ORDER_PAYMENT_STATUS_BADGE: Record<
   string,
   { label: string; className: string }
 > = {
-  pending: {
-    label: "Pago pendiente",
+  paid: {
+    label: "Pagado",
+    className: "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/30 dark:text-emerald-300",
+  },
+  unpaid: {
+    label: "Pendiente de pago",
     className:
       "bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200",
   },
-  unpaid: {
-    label: "Sin cobrar",
-    className: "bg-orange-100 text-orange-900 dark:bg-orange-950/40 dark:text-orange-200",
-  },
-  paid: {
-    label: "Cobrado",
-    className: "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/30 dark:text-emerald-300",
+  /** Legacy */
+  pending: {
+    label: "Pendiente de pago",
+    className:
+      "bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200",
   },
   deferred: {
     label: "Pago al entregar",

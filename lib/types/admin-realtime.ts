@@ -98,3 +98,31 @@ export function isAdminReservationRealtimePayload(
   }
   return false
 }
+
+export interface AdminWhatsappRealtimePayload {
+  type: "whatsapp.message_created"
+  businessId: string
+  conversationId: string
+  messageId: string
+  sender: string
+  message: string
+  isAiGenerated: boolean
+  createdAt: string
+}
+
+export function isAdminWhatsappRealtimePayload(
+  value: unknown,
+): value is AdminWhatsappRealtimePayload {
+  if (!value || typeof value !== "object") return false
+  const o = value as Record<string, unknown>
+  return (
+    o.type === "whatsapp.message_created" &&
+    typeof o.businessId === "string" &&
+    typeof o.conversationId === "string" &&
+    typeof o.messageId === "string" &&
+    typeof o.sender === "string" &&
+    typeof o.message === "string" &&
+    typeof o.isAiGenerated === "boolean" &&
+    typeof o.createdAt === "string"
+  )
+}

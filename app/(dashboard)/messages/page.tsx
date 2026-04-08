@@ -1,108 +1,218 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
+import { isAxiosError } from "axios"
+import { toast } from "sonner"
+
+import { useAdminSocket } from "@/contexts/admin-socket-context"
 import { ChatList } from "@/components/messages/chat-list"
 import { ChatWindow } from "@/components/messages/chat-window"
 import { EmptyState } from "@/components/messages/empty-state"
 import type { ChatItemData } from "@/components/messages/chat-item"
 import type { Message } from "@/components/messages/message-bubble"
+import {
+  fetchAdminWhatsappConversationBotStatus,
+  fetchAdminWhatsappMessages,
+  patchAdminWhatsappConversationBotStatus,
+} from "@/lib/requests/messages"
+import type { AdminWhatsappRealtimePayload } from "@/lib/types/admin-realtime"
 
-// Mock data for conversations
-const mockChats: ChatItemData[] = [
-  {
-    id: "1",
-    customerName: "Maria Garcia",
-    lastMessage: "Perfecto, gracias por la informacion!",
-    timestamp: "10:30",
-    unreadCount: 2,
-    isOnline: true,
-  },
-  {
-    id: "2",
-    customerName: "Juan Rodriguez",
-    lastMessage: "A que hora puedo pasar a recoger el pedido?",
-    timestamp: "09:45",
-    unreadCount: 0,
-    isOnline: false,
-  },
-  {
-    id: "3",
-    customerName: "Ana Martinez",
-    lastMessage: "Tienen disponible el menu vegetariano?",
-    timestamp: "Ayer",
-    unreadCount: 1,
-    isOnline: true,
-  },
-  {
-    id: "4",
-    customerName: "Carlos Lopez",
-    lastMessage: "Excelente servicio, muy recomendado!",
-    timestamp: "Ayer",
-    unreadCount: 0,
-    isOnline: false,
-  },
-  {
-    id: "5",
-    customerName: "Laura Sanchez",
-    lastMessage: "Podria modificar mi reserva para 6 personas?",
-    timestamp: "Lun",
-    unreadCount: 3,
-    isOnline: false,
-  },
-  {
-    id: "6",
-    customerName: "Pedro Fernandez",
-    lastMessage: "Cual es el horario de atencion los domingos?",
-    timestamp: "Dom",
-    unreadCount: 0,
-    isOnline: true,
-  },
-]
+function toChatTimestamp(value: string): string {
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return ""
+  return d.toLocaleTimeString("es-AR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
 
-// Mock messages for each conversation
-const mockMessages: Record<string, Message[]> = {
-  "1": [
-    { id: "1a", content: "Hola! Buenas tardes, tengo una consulta sobre mi pedido", timestamp: "10:15", isSent: false },
-    { id: "1b", content: "Hola Maria! Claro, en que puedo ayudarte?", timestamp: "10:18", isSent: true, isRead: true },
-    { id: "1c", content: "Queria saber si pueden agregar un postre extra a mi orden", timestamp: "10:22", isSent: false },
-    { id: "1d", content: "Por supuesto! Tenemos tiramissu, flan y helado artesanal disponibles", timestamp: "10:25", isSent: true, isRead: true },
-    { id: "1e", content: "Perfecto, gracias por la informacion!", timestamp: "10:30", isSent: false },
-  ],
-  "2": [
-    { id: "2a", content: "Buenos dias! Realice un pedido hace un rato", timestamp: "09:30", isSent: false },
-    { id: "2b", content: "Buen dia Juan! Si, veo tu pedido #1234. Ya esta en preparacion", timestamp: "09:35", isSent: true, isRead: true },
-    { id: "2c", content: "A que hora puedo pasar a recoger el pedido?", timestamp: "09:45", isSent: false },
-  ],
-  "3": [
-    { id: "3a", content: "Hola! Quisiera hacer una consulta", timestamp: "14:00", isSent: false },
-    { id: "3b", content: "Hola Ana! Adelante, te escucho", timestamp: "14:05", isSent: true, isRead: true },
-    { id: "3c", content: "Tienen disponible el menu vegetariano?", timestamp: "14:10", isSent: false },
-  ],
-  "4": [
-    { id: "4a", content: "Queria agradecer por el excelente servicio de ayer", timestamp: "11:00", isSent: false },
-    { id: "4b", content: "Muchas gracias Carlos! Nos alegra que hayas disfrutado tu experiencia", timestamp: "11:15", isSent: true, isRead: true },
-    { id: "4c", content: "Excelente servicio, muy recomendado!", timestamp: "11:20", isSent: false },
-  ],
-  "5": [
-    { id: "5a", content: "Hola, tengo una reserva para manana", timestamp: "16:00", isSent: false },
-    { id: "5b", content: "Hola Laura! Si, veo tu reserva para 4 personas a las 20:00", timestamp: "16:10", isSent: true, isRead: true },
-    { id: "5c", content: "Podria modificar mi reserva para 6 personas?", timestamp: "16:15", isSent: false },
-  ],
-  "6": [
-    { id: "6a", content: "Buenas tardes!", timestamp: "12:00", isSent: false },
-    { id: "6b", content: "Buenas tardes Pedro! Como puedo ayudarte?", timestamp: "12:05", isSent: true, isRead: true },
-    { id: "6c", content: "Cual es el horario de atencion los domingos?", timestamp: "12:10", isSent: false },
-  ],
+function isOutboundMessage(payload: {
+  sender: string
+  isAiGenerated: boolean
+}): boolean {
+  if (payload.isAiGenerated) return true
+  const normalized = payload.sender.trim().toLowerCase()
+  return normalized.includes("bot") || normalized.includes("ai")
+}
+
+function buildRealtimeMessage(payload: AdminWhatsappRealtimePayload): Message {
+  return {
+    id: payload.messageId,
+    content: payload.message,
+    timestamp: toChatTimestamp(payload.createdAt),
+    isSent: isOutboundMessage(payload),
+    isRead: true,
+  }
 }
 
 export default function MessagesPage() {
+  const { subscribeToWhatsappRealtime } = useAdminSocket()
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
-  const [chats, setChats] = useState<ChatItemData[]>(mockChats)
-  const [messages, setMessages] = useState<Record<string, Message[]>>(mockMessages)
+  const [chats, setChats] = useState<ChatItemData[]>([])
+  const [messages, setMessages] = useState<Record<string, Message[]>>({})
+  const [botEnabledByConversation, setBotEnabledByConversation] = useState<
+    Record<string, boolean>
+  >({})
+  const [togglingConversationId, setTogglingConversationId] = useState<
+    string | null
+  >(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const selectedChat = chats.find((chat) => chat.id === selectedChatId)
   const currentMessages = selectedChatId ? messages[selectedChatId] ?? [] : []
+  const loadInitialMessages = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await fetchAdminWhatsappMessages({
+        page: 1,
+        pageSize: 100,
+      })
+
+      const nextChatsMap = new Map<string, ChatItemData>()
+      const nextMessages: Record<string, Message[]> = {}
+      const nextBotEnabledByConversation: Record<string, boolean> = {}
+
+      for (const item of data.items) {
+        const conversationId = item.conversation.id
+        if (!conversationId) continue
+
+        const message: Message = {
+          id: item.id,
+          content: item.message,
+          timestamp: toChatTimestamp(item.createdAt),
+          isSent: isOutboundMessage(item),
+          isRead: true,
+        }
+
+        nextMessages[conversationId] = [
+          message,
+          ...(nextMessages[conversationId] ?? []),
+        ]
+
+        if (!nextChatsMap.has(conversationId)) {
+          nextChatsMap.set(conversationId, {
+            id: conversationId,
+            customerName:
+              item.conversation.customer.name?.trim() ||
+              item.conversation.customer.phoneNumber ||
+              "Cliente",
+            lastMessage: item.message,
+            timestamp: toChatTimestamp(item.createdAt),
+            unreadCount: 0,
+            isOnline: false,
+            botEnabled: item.conversation.botEnabled ?? true,
+          })
+        }
+
+        nextBotEnabledByConversation[conversationId] =
+          item.conversation.botEnabled ?? true
+      }
+
+      setChats(Array.from(nextChatsMap.values()))
+      setMessages(nextMessages)
+      setBotEnabledByConversation(nextBotEnabledByConversation)
+      setSelectedChatId((prev) =>
+        prev && nextChatsMap.has(prev)
+          ? prev
+          : Array.from(nextChatsMap.keys())[0] ?? null,
+      )
+    } catch (e) {
+      if (isAxiosError(e)) {
+        const msg = (e.response?.data as { message?: string })?.message ?? e.message
+        setError(
+          typeof msg === "string" && msg
+            ? msg
+            : "No se pudieron cargar los mensajes de WhatsApp.",
+        )
+      } else {
+        setError("Error inesperado al cargar mensajes.")
+      }
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadInitialMessages()
+  }, [loadInitialMessages])
+
+  useEffect(() => {
+    return subscribeToWhatsappRealtime((payload) => {
+      const nextMessage = buildRealtimeMessage(payload)
+      setMessages((prev) => {
+        const existing = prev[payload.conversationId] ?? []
+        if (existing.some((m) => m.id === payload.messageId)) {
+          return prev
+        }
+        return {
+          ...prev,
+          [payload.conversationId]: [...existing, nextMessage],
+        }
+      })
+
+      setChats((prev) => {
+        const existing = prev.find((c) => c.id === payload.conversationId)
+        if (!existing) {
+          return [
+            {
+              id: payload.conversationId,
+              customerName: payload.sender || "Cliente",
+              lastMessage: payload.message,
+              timestamp: toChatTimestamp(payload.createdAt),
+              unreadCount:
+                selectedChatId === payload.conversationId || selectedChatId == null
+                  ? 0
+                  : 1,
+              isOnline: false,
+              botEnabled: true,
+            },
+            ...prev,
+          ]
+        }
+
+        return [
+          {
+            ...existing,
+            lastMessage: payload.message,
+            timestamp: toChatTimestamp(payload.createdAt),
+            unreadCount:
+              selectedChatId === payload.conversationId
+                ? 0
+                : existing.unreadCount + 1,
+          },
+          ...prev.filter((c) => c.id !== payload.conversationId),
+        ]
+      })
+    })
+  }, [subscribeToWhatsappRealtime, selectedChatId])
+
+  useEffect(() => {
+    if (!selectedChatId) return
+    if (Object.prototype.hasOwnProperty.call(botEnabledByConversation, selectedChatId)) {
+      return
+    }
+    void (async () => {
+      try {
+        const enabled = await fetchAdminWhatsappConversationBotStatus(
+          selectedChatId,
+        )
+        setBotEnabledByConversation((prev) => ({
+          ...prev,
+          [selectedChatId]: enabled,
+        }))
+        setChats((prev) =>
+          prev.map((chat) =>
+            chat.id === selectedChatId ? { ...chat, botEnabled: enabled } : chat,
+          ),
+        )
+      } catch {
+        /* noop */
+      }
+    })()
+  }, [selectedChatId, botEnabledByConversation])
 
   const handleSelectChat = useCallback((chatId: string) => {
     setSelectedChatId(chatId)
@@ -146,8 +256,82 @@ export default function MessagesPage() {
     [selectedChatId]
   )
 
+  const handleToggleBot = useCallback(
+    async (enabled: boolean) => {
+      if (!selectedChatId) return
+      const conversationId = selectedChatId
+      const prevValue = botEnabledByConversation[conversationId] ?? true
+
+      setTogglingConversationId(conversationId)
+      setBotEnabledByConversation((prev) => ({
+        ...prev,
+        [conversationId]: enabled,
+      }))
+      setChats((prev) =>
+        prev.map((chat) =>
+          chat.id === conversationId ? { ...chat, botEnabled: enabled } : chat,
+        ),
+      )
+
+      try {
+        const persisted = await patchAdminWhatsappConversationBotStatus(
+          conversationId,
+          enabled,
+        )
+        setBotEnabledByConversation((prev) => ({
+          ...prev,
+          [conversationId]: persisted,
+        }))
+        setChats((prev) =>
+          prev.map((chat) =>
+            chat.id === conversationId
+              ? { ...chat, botEnabled: persisted }
+              : chat,
+          ),
+        )
+        toast.success(
+          persisted
+            ? "Bot activado para esta conversación"
+            : "Modo humano activado para esta conversación",
+        )
+      } catch {
+        setBotEnabledByConversation((prev) => ({
+          ...prev,
+          [conversationId]: prevValue,
+        }))
+        setChats((prev) =>
+          prev.map((chat) =>
+            chat.id === conversationId ? { ...chat, botEnabled: prevValue } : chat,
+          ),
+        )
+        toast.error("No se pudo actualizar el modo del chat. Inténtalo de nuevo.")
+      } finally {
+        setTogglingConversationId((current) =>
+          current === conversationId ? null : current,
+        )
+      }
+    },
+    [selectedChatId, botEnabledByConversation],
+  )
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[14rem] items-center justify-center rounded-lg border bg-background p-8 text-sm text-muted-foreground">
+        Cargando conversaciones...
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-[14rem] items-center justify-center rounded-lg border bg-background p-8 text-sm text-destructive">
+        {error}
+      </div>
+    )
+  }
+
   return (
-    <div className="flex h-[calc(100vh-theme(spacing.14)-theme(spacing.8)-theme(spacing.4))] overflow-hidden rounded-lg border bg-background shadow-sm md:h-[calc(100vh-theme(spacing.14)-theme(spacing.12)-theme(spacing.4))]">
+    <div className="flex h-[calc(100vh-theme(spacing.14)-theme(spacing.8)-theme(spacing.4))] min-h-0 overflow-hidden rounded-lg border bg-background shadow-sm md:h-[calc(100vh-theme(spacing.14)-theme(spacing.12)-theme(spacing.4))]">
       {/* Chat List - Hidden on mobile when a chat is selected */}
       <div className={`w-full flex-shrink-0 md:w-80 ${selectedChatId ? "hidden md:block" : ""}`}>
         <ChatList
@@ -160,9 +344,9 @@ export default function MessagesPage() {
       </div>
 
       {/* Chat Window or Empty State */}
-      <div className={`flex-1 ${!selectedChatId ? "hidden md:flex" : "flex"}`}>
+      <div className={`min-h-0 flex-1 ${!selectedChatId ? "hidden md:flex" : "flex"}`}>
         {selectedChat ? (
-          <div className="flex w-full flex-col">
+          <div className="flex h-full min-h-0 w-full flex-col">
             {/* Mobile back button */}
             <div className="flex items-center border-b p-2 md:hidden">
               <button
@@ -185,11 +369,18 @@ export default function MessagesPage() {
                 Volver
               </button>
             </div>
-            <div className="flex-1">
+            <div className="min-h-0 flex-1">
               <ChatWindow
                 chat={selectedChat}
                 messages={currentMessages}
                 onSendMessage={handleSendMessage}
+                botEnabled={
+                  botEnabledByConversation[selectedChat.id] ??
+                  selectedChat.botEnabled ??
+                  true
+                }
+                isTogglingBot={togglingConversationId === selectedChat.id}
+                onToggleBot={handleToggleBot}
               />
             </div>
           </div>

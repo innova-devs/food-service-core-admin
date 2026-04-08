@@ -12,6 +12,7 @@ export interface ChatItemData {
   timestamp: string
   unreadCount: number
   isOnline?: boolean
+  botEnabled?: boolean
 }
 
 interface ChatItemProps {

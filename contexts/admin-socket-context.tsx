@@ -18,8 +18,10 @@ import { getOrderStatusLabelEs } from "@/lib/constants/orderWorkflow"
 import {
   isAdminOrderRealtimePayload,
   isAdminReservationRealtimePayload,
+  isAdminWhatsappRealtimePayload,
   type AdminOrderRealtimePayload,
   type AdminReservationRealtimePayload,
+  type AdminWhatsappRealtimePayload,
 } from "@/lib/types/admin-realtime"
 
 export type AdminNotificationKind = "order" | "reservation"
@@ -46,6 +48,10 @@ type AdminSocketContextValue = {
   /** Evento `admin:reservation` con payload discriminado (created / cancelled / edit_started). */
   subscribeToReservationRealtime: (
     cb: (payload: AdminReservationRealtimePayload) => void,
+  ) => () => void
+  /** Evento `admin:whatsapp` con payload `whatsapp.message_created`. */
+  subscribeToWhatsappRealtime: (
+    cb: (payload: AdminWhatsappRealtimePayload) => void,
   ) => () => void
 }
 
@@ -107,6 +113,9 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
   const reservationRealtimeListenersRef = useRef(
     new Set<(payload: AdminReservationRealtimePayload) => void>(),
   )
+  const whatsappRealtimeListenersRef = useRef(
+    new Set<(payload: AdminWhatsappRealtimePayload) => void>(),
+  )
   const socketRef = useRef<Socket | null>(null)
 
   const subscribeToOrderRealtime = useCallback(
@@ -124,6 +133,16 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
       reservationRealtimeListenersRef.current.add(cb)
       return () => {
         reservationRealtimeListenersRef.current.delete(cb)
+      }
+    },
+    [],
+  )
+
+  const subscribeToWhatsappRealtime = useCallback(
+    (cb: (payload: AdminWhatsappRealtimePayload) => void) => {
+      whatsappRealtimeListenersRef.current.add(cb)
+      return () => {
+        whatsappRealtimeListenersRef.current.delete(cb)
       }
     },
     [],
@@ -245,6 +264,20 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
       })
     })
 
+    socket.on("admin:whatsapp", (raw: unknown) => {
+      if (!isAdminWhatsappRealtimePayload(raw)) {
+        return
+      }
+      const p = raw
+      whatsappRealtimeListenersRef.current.forEach((fn) => {
+        try {
+          fn(p)
+        } catch {
+          /* noop */
+        }
+      })
+    })
+
     return () => {
       socket.removeAllListeners()
       socket.close()
@@ -261,6 +294,7 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
       removeNotification,
       subscribeToOrderRealtime,
       subscribeToReservationRealtime,
+      subscribeToWhatsappRealtime,
     }),
     [
       isConnected,
@@ -269,6 +303,7 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
       removeNotification,
       subscribeToOrderRealtime,
       subscribeToReservationRealtime,
+      subscribeToWhatsappRealtime,
     ],
   )
 
