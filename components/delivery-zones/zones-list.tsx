@@ -1,8 +1,8 @@
 "use client"
 
-import { Edit2, Trash2 } from "lucide-react"
+import { useEffect, useRef } from "react"
+import { Edit2, Pentagon, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import type { DeliveryZone } from "./types"
 
 interface ZonesListProps {
@@ -10,6 +10,7 @@ interface ZonesListProps {
   selectedZoneId: string | null
   onSelectZone: (zoneId: string) => void
   onEditZone: (zone: DeliveryZone) => void
+  onEditZonePolygon: (zone: DeliveryZone) => void
   onDeleteZone: (zone: DeliveryZone) => void
 }
 
@@ -18,37 +19,69 @@ export function ZonesList({
   selectedZoneId,
   onSelectZone,
   onEditZone,
+  onEditZonePolygon,
   onDeleteZone,
 }: ZonesListProps) {
+  const itemRefs = useRef<Record<string, HTMLDivElement | null>>({})
+
+  useEffect(() => {
+    if (!selectedZoneId) return
+    const el = itemRefs.current[selectedZoneId]
+    if (!el) return
+    el.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "nearest",
+    })
+  }, [selectedZoneId])
+
   return (
-    <ScrollArea className="flex-1">
+    <div className="min-h-0 flex-1 overflow-y-auto pr-1">
       <div className="flex flex-col gap-2 p-1">
         {zones.map((zone) => (
           <ZoneItem
             key={zone.id}
             zone={zone}
             isSelected={selectedZoneId === zone.id}
+            containerRef={(el) => {
+              itemRefs.current[zone.id] = el
+            }}
             onSelect={() => onSelectZone(zone.id)}
             onEdit={() => onEditZone(zone)}
+            onEditPolygon={() => onEditZonePolygon(zone)}
             onDelete={() => onDeleteZone(zone)}
           />
         ))}
       </div>
-    </ScrollArea>
+    </div>
   )
 }
 
 interface ZoneItemProps {
   zone: DeliveryZone
   isSelected: boolean
+  containerRef: (el: HTMLDivElement | null) => void
   onSelect: () => void
   onEdit: () => void
+  onEditPolygon: () => void
   onDelete: () => void
 }
 
-function ZoneItem({ zone, isSelected, onSelect, onEdit, onDelete }: ZoneItemProps) {
+function ZoneItem({
+  zone,
+  isSelected,
+  containerRef,
+  onSelect,
+  onEdit,
+  onEditPolygon,
+  onDelete,
+}: ZoneItemProps) {
+  const fee = zone.deliveryFee.toLocaleString("es-AR")
+  const min = zone.minOrderAmount.toLocaleString("es-AR")
+
   return (
     <div
+      ref={containerRef}
       role="button"
       tabIndex={0}
       onClick={onSelect}
@@ -65,14 +98,27 @@ function ZoneItem({ zone, isSelected, onSelect, onEdit, onDelete }: ZoneItemProp
       }`}
     >
       <div className="flex items-center gap-3 min-w-0">
-        <div
-          className="size-4 shrink-0 rounded-full"
-          style={{ backgroundColor: zone.color }}
-          aria-hidden="true"
-        />
-        <span className="truncate font-medium">{zone.name}</span>
+        <div className="min-w-0">
+          <p className="truncate font-medium">{zone.name}</p>
+          <p className="truncate text-xs text-muted-foreground">
+            Envio ${fee} - Min. ${min}
+          </p>
+        </div>
       </div>
       <div className="flex items-center gap-1 shrink-0">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          onClick={(e) => {
+            e.stopPropagation()
+            onEditPolygon()
+          }}
+          aria-label={`Editar poligono de ${zone.name}`}
+          title="Editar poligono"
+        >
+          <Pentagon className="size-4" />
+        </Button>
         <Button
           variant="ghost"
           size="icon"
@@ -82,6 +128,7 @@ function ZoneItem({ zone, isSelected, onSelect, onEdit, onDelete }: ZoneItemProp
             onEdit()
           }}
           aria-label={`Editar zona ${zone.name}`}
+          title="Editar datos"
         >
           <Edit2 className="size-4" />
         </Button>

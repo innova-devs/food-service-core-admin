@@ -158,3 +158,10 @@
 .leaflet-draw-toolbar a:hover {
   background-color: var(--muted) !important;
 }
+
+/* Keep Leaflet layers below Radix dialogs/popovers */
+.delivery-zones-map .leaflet-pane,
+.delivery-zones-map .leaflet-top,
+.delivery-zones-map .leaflet-bottom {
+  z-index: 10 !important;
+}

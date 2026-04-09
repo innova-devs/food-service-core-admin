@@ -10,6 +10,7 @@ import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from "./types"
 
 interface ZoneMapProps {
   zones: DeliveryZone[]
+  mapCenter: { lat: number; lng: number } | null
   selectedZoneId: string | null
   isDrawing: boolean
   onPolygonDrawn: (polygon: GeoJSON.Polygon) => void
@@ -19,12 +20,22 @@ interface ZoneMapProps {
 
 export function ZoneMap({
   zones,
+  mapCenter,
   selectedZoneId,
   isDrawing,
   onPolygonDrawn,
   onSelectZone,
   editingZone,
 }: ZoneMapProps) {
+  const getZoneColor = useCallback((zoneId: string) => {
+    const palette = ["#3b82f6", "#22c55e", "#f97316", "#ef4444", "#a855f7", "#14b8a6"]
+    let hash = 0
+    for (let i = 0; i < zoneId.length; i += 1) {
+      hash = zoneId.charCodeAt(i) + ((hash << 5) - hash)
+    }
+    return palette[Math.abs(hash) % palette.length]
+  }, [])
+
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const zonesLayerRef = useRef<L.FeatureGroup | null>(null)
@@ -107,6 +118,13 @@ export function ZoneMap({
       map.addControl(drawControl)
       drawControlRef.current = drawControl
 
+      if (editingZone?.polygon) {
+        const editableLayer = L.geoJSON(editingZone.polygon)
+        editableLayer.eachLayer((layer) => {
+          drawLayer.addLayer(layer)
+        })
+      }
+
       // Handle draw events
       const handleCreated = (e: L.LeafletEvent) => {
         const event = e as L.DrawEvents.Created
@@ -123,17 +141,29 @@ export function ZoneMap({
         }
       }
 
+      const handleEdited = (e: L.LeafletEvent) => {
+        const event = e as L.DrawEvents.Edited
+        event.layers.eachLayer((layer) => {
+          const geoJson = (layer as L.Polygon).toGeoJSON()
+          if (geoJson.geometry.type === "Polygon") {
+            onPolygonDrawn(geoJson.geometry as GeoJSON.Polygon)
+          }
+        })
+      }
+
       map.on(L.Draw.Event.CREATED, handleCreated)
+      map.on(L.Draw.Event.EDITED, handleEdited)
 
       return () => {
         map.off(L.Draw.Event.CREATED, handleCreated)
+        map.off(L.Draw.Event.EDITED, handleEdited)
         if (drawControlRef.current) {
           map.removeControl(drawControlRef.current)
           drawControlRef.current = null
         }
       }
     }
-  }, [isDrawing, onPolygonDrawn])
+  }, [isDrawing, onPolygonDrawn, editingZone])
 
   // Render zones on the map
   const renderZones = useCallback(() => {
@@ -148,9 +178,9 @@ export function ZoneMap({
 
       const polygon = L.geoJSON(zone.polygon, {
         style: {
-          color: zone.color,
+          color: getZoneColor(zone.id),
           weight: selectedZoneId === zone.id ? 3 : 2,
-          fillColor: zone.color,
+          fillColor: getZoneColor(zone.id),
           fillOpacity: selectedZoneId === zone.id ? 0.4 : 0.2,
         },
       })
@@ -168,7 +198,7 @@ export function ZoneMap({
 
       zonesLayer.addLayer(polygon)
     })
-  }, [zones, selectedZoneId, onSelectZone, editingZone])
+  }, [zones, selectedZoneId, onSelectZone, editingZone, getZoneColor])
 
   useEffect(() => {
     renderZones()
@@ -179,6 +209,11 @@ export function ZoneMap({
     const map = mapRef.current
     const zonesLayer = zonesLayerRef.current
     if (!map || !zonesLayer) return
+
+    if (!selectedZoneId && zones.length === 0 && mapCenter) {
+      map.setView([mapCenter.lat, mapCenter.lng], DEFAULT_MAP_ZOOM)
+      return
+    }
 
     if (selectedZoneId) {
       const zone = zones.find((z) => z.id === selectedZoneId)
@@ -192,9 +227,12 @@ export function ZoneMap({
         map.fitBounds(bounds, { padding: [50, 50] })
       }
     }
-  }, [selectedZoneId, zones])
+  }, [selectedZoneId, zones, mapCenter])
 
   return (
-    <div ref={mapContainerRef} className="size-full min-h-[400px]" />
+    <div
+      ref={mapContainerRef}
+      className="delivery-zones-map size-full min-h-[400px] relative z-0"
+    />
   )
 }
