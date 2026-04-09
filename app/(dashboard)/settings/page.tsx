@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
+import { isAxiosError } from "axios"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
 
@@ -8,98 +9,154 @@ import { Button } from "@/components/ui/button"
 import { SettingsSection } from "@/components/settings/settings-section"
 import { ToggleField } from "@/components/settings/toggle-field"
 import { NumberInputField } from "@/components/settings/number-input-field"
+import {
+  fetchAdminBusinessConfig,
+  patchAdminBusinessConfig,
+  resetAdminBusinessConfig,
+  type AdminBusinessConfig,
+  type AdminBusinessConfigPatch,
+} from "@/lib/requests/business-config"
 
-interface SettingsData {
-  // Bot & Automation
-  botEnabled: boolean
-
-  // Human Handoff
-  allowHumanHandoff: boolean
-  autoTimeoutMinutes: number | null
-
-  // Idle & Reminders
-  sendIdleReminders: boolean
-  idleReminderDelayMinutes: number | null
-  autoCloseConversationMinutes: number | null
-
-  // Order Reminders
-  sendOrderReminders: boolean
-  draftOrderReminderDelayMinutes: number | null
-  draftOrderExpirationMinutes: number | null
-
-  // Orders
-  ordersEnabled: boolean
-  checkoutEnabled: boolean
-
-  // Reservations
-  reservationsEnabled: boolean
-  minAdvanceTimeMinutes: number | null
-  maxDaysAhead: number | null
-  defaultDurationMinutes: number | null
-  requireConfirmation: boolean
-  allowSameDayReservations: boolean
-}
-
-const defaultSettings: SettingsData = {
-  botEnabled: true,
-  allowHumanHandoff: true,
-  autoTimeoutMinutes: 30,
-  sendIdleReminders: true,
-  idleReminderDelayMinutes: 15,
-  autoCloseConversationMinutes: 60,
-  sendOrderReminders: true,
-  draftOrderReminderDelayMinutes: 30,
-  draftOrderExpirationMinutes: 120,
-  ordersEnabled: true,
-  checkoutEnabled: true,
-  reservationsEnabled: true,
-  minAdvanceTimeMinutes: 60,
-  maxDaysAhead: 30,
-  defaultDurationMinutes: 90,
-  requireConfirmation: true,
-  allowSameDayReservations: false,
-}
+type SettingsData = AdminBusinessConfig
 
 export default function SettingsPage() {
-  const [settings, setSettings] = useState<SettingsData>(defaultSettings)
+  const [settings, setSettings] = useState<SettingsData | null>(null)
+  const [initialSettings, setInitialSettings] = useState<SettingsData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [isResetting, setIsResetting] = useState(false)
+
+  const loadConfig = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const data = await fetchAdminBusinessConfig()
+      setSettings(data)
+      setInitialSettings(data)
+    } catch (e) {
+      const message = isAxiosError(e)
+        ? (e.response?.data as { message?: string; error?: string })?.message ??
+          (e.response?.data as { message?: string; error?: string })?.error ??
+          e.message
+        : "No se pudo cargar la configuración."
+      toast.error(typeof message === "string" && message ? message : "No se pudo cargar la configuración.")
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
-    // Simulate loading initial data
-    const timer = setTimeout(() => {
-      setSettings(defaultSettings)
-      setIsLoading(false)
-    }, 500)
-    return () => clearTimeout(timer)
-  }, [])
+    void loadConfig()
+  }, [loadConfig])
 
   const updateSetting = <K extends keyof SettingsData>(
     key: K,
     value: SettingsData[K]
   ) => {
-    setSettings((prev) => ({ ...prev, [key]: value }))
+    setSettings((prev) => (prev ? { ...prev, [key]: value } : prev))
+  }
+
+  const patchPayload = useMemo<AdminBusinessConfigPatch>(() => {
+    if (!settings || !initialSettings) return {}
+    const entries = Object.entries(settings).filter(([key, value]) => {
+      const typedKey = key as keyof SettingsData
+      return value !== initialSettings[typedKey]
+    })
+    return Object.fromEntries(entries) as AdminBusinessConfigPatch
+  }, [settings, initialSettings])
+
+  const isDirty = Object.keys(patchPayload).length > 0
+
+  const validate = (): boolean => {
+    if (!settings) return false
+
+    const requiredPositive: Array<keyof SettingsData> = [
+      "idle_reminder_minutes",
+      "idle_close_minutes",
+      "draft_order_reminder_minutes",
+      "draft_order_expire_minutes",
+      "reservation_max_days_ahead",
+      "reservation_default_duration_minutes",
+    ]
+    for (const key of requiredPositive) {
+      const value = settings[key]
+      if (typeof value !== "number" || value <= 0) {
+        toast.error("Hay campos numéricos inválidos. Revisa valores mayores a 0.")
+        return false
+      }
+    }
+
+    if (
+      settings.human_handoff_auto_timeout_minutes != null &&
+      settings.human_handoff_auto_timeout_minutes <= 0
+    ) {
+      toast.error("El timeout de handoff humano debe ser mayor a 0 o vacío.")
+      return false
+    }
+
+    if (
+      typeof settings.reservation_min_lead_minutes !== "number" ||
+      settings.reservation_min_lead_minutes < 0
+    ) {
+      toast.error("El tiempo mínimo de anticipación debe ser mayor o igual a 0.")
+      return false
+    }
+
+    return true
   }
 
   const handleSave = async () => {
+    if (!settings) return
+    if (!isDirty) {
+      toast.info("No hay cambios para guardar")
+      return
+    }
+    if (!validate()) return
+
     setIsSaving(true)
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      const updated = await patchAdminBusinessConfig(patchPayload)
+      setSettings(updated)
+      setInitialSettings(updated)
       toast.success("Configuración guardada correctamente")
-    } catch {
-      toast.error("Error al guardar la configuración")
+    } catch (e) {
+      const message = isAxiosError(e)
+        ? (e.response?.data as { message?: string; error?: string })?.message ??
+          (e.response?.data as { message?: string; error?: string })?.error ??
+          e.message
+        : "Error al guardar la configuración"
+      toast.error(typeof message === "string" && message ? message : "Error al guardar la configuración")
     } finally {
       setIsSaving(false)
     }
   }
 
   const handleCancel = () => {
-    setSettings(defaultSettings)
+    if (!initialSettings) return
+    setSettings(initialSettings)
     toast.info("Cambios descartados")
   }
 
-  if (isLoading) {
+  const handleResetDefaults = async () => {
+    setIsResetting(true)
+    try {
+      await resetAdminBusinessConfig()
+      const refreshed = await fetchAdminBusinessConfig()
+      setSettings(refreshed)
+      setInitialSettings(refreshed)
+      toast.success("Configuración restaurada a valores por defecto")
+    } catch (e) {
+      const message = isAxiosError(e)
+        ? (e.response?.data as { message?: string; error?: string })?.message ??
+          (e.response?.data as { message?: string; error?: string })?.error ??
+          e.message
+        : "No se pudo restaurar la configuración por defecto."
+      toast.error(typeof message === "string" && message ? message : "No se pudo restaurar la configuración por defecto.")
+    } finally {
+      setIsResetting(false)
+    }
+  }
+
+  if (isLoading || !settings) {
     return (
       <div className="flex h-[50vh] items-center justify-center">
         <Loader2 className="size-8 animate-spin text-muted-foreground" />
@@ -126,8 +183,8 @@ export default function SettingsPage() {
             id="bot-enabled"
             label="Habilitar Bot"
             description="Activar respuestas automáticas para los clientes"
-            checked={settings.botEnabled}
-            onCheckedChange={(checked) => updateSetting("botEnabled", checked)}
+            checked={settings.bot_enabled}
+            onCheckedChange={(checked) => updateSetting("bot_enabled", checked)}
           />
         </SettingsSection>
 
@@ -140,19 +197,20 @@ export default function SettingsPage() {
             id="allow-human-handoff"
             label="Permitir Soporte Humano"
             description="Permitir transferir conversaciones a un agente humano"
-            checked={settings.allowHumanHandoff}
+            checked={settings.allow_human_handoff}
             onCheckedChange={(checked) =>
-              updateSetting("allowHumanHandoff", checked)
+              updateSetting("allow_human_handoff", checked)
             }
           />
           <NumberInputField
             id="auto-timeout"
             label="Volver al Bot Después de (minutos)"
             description="Tiempo antes de regresar automáticamente al bot"
-            value={settings.autoTimeoutMinutes}
-            onChange={(value) => updateSetting("autoTimeoutMinutes", value)}
-            disabled={!settings.allowHumanHandoff}
+            value={settings.human_handoff_auto_timeout_minutes}
+            onChange={(value) => updateSetting("human_handoff_auto_timeout_minutes", value)}
+            disabled={!settings.allow_human_handoff}
             placeholder="Dejar vacío para desactivar"
+            min={1}
           />
         </SettingsSection>
 
@@ -165,29 +223,31 @@ export default function SettingsPage() {
             id="send-idle-reminders"
             label="Enviar Recordatorios de Inactividad"
             description="Notificar al cliente cuando está inactivo"
-            checked={settings.sendIdleReminders}
+            checked={settings.send_idle_reminders}
             onCheckedChange={(checked) =>
-              updateSetting("sendIdleReminders", checked)
+              updateSetting("send_idle_reminders", checked)
             }
           />
           <NumberInputField
             id="idle-reminder-delay"
             label="Recordatorio Después de (minutos)"
             description="Tiempo de inactividad antes de enviar recordatorio"
-            value={settings.idleReminderDelayMinutes}
+            value={settings.idle_reminder_minutes}
             onChange={(value) =>
-              updateSetting("idleReminderDelayMinutes", value)
+              updateSetting("idle_reminder_minutes", value ?? 1)
             }
-            disabled={!settings.sendIdleReminders}
+            disabled={!settings.send_idle_reminders}
+            min={1}
           />
           <NumberInputField
             id="auto-close-conversation"
             label="Cerrar Conversación Después de (minutos)"
             description="Tiempo de inactividad antes de cerrar la conversación"
-            value={settings.autoCloseConversationMinutes}
+            value={settings.idle_close_minutes}
             onChange={(value) =>
-              updateSetting("autoCloseConversationMinutes", value)
+              updateSetting("idle_close_minutes", value ?? 1)
             }
+            min={1}
           />
         </SettingsSection>
 
@@ -200,30 +260,32 @@ export default function SettingsPage() {
             id="send-order-reminders"
             label="Enviar Recordatorios de Pedidos"
             description="Notificar sobre pedidos pendientes de completar"
-            checked={settings.sendOrderReminders}
+            checked={settings.send_order_reminders}
             onCheckedChange={(checked) =>
-              updateSetting("sendOrderReminders", checked)
+              updateSetting("send_order_reminders", checked)
             }
           />
           <NumberInputField
             id="draft-order-reminder-delay"
             label="Recordatorio para Pedidos Pendientes (minutos)"
             description="Tiempo antes de recordar sobre un pedido en borrador"
-            value={settings.draftOrderReminderDelayMinutes}
+            value={settings.draft_order_reminder_minutes}
             onChange={(value) =>
-              updateSetting("draftOrderReminderDelayMinutes", value)
+              updateSetting("draft_order_reminder_minutes", value ?? 1)
             }
-            disabled={!settings.sendOrderReminders}
+            disabled={!settings.send_order_reminders}
+            min={1}
           />
           <NumberInputField
             id="draft-order-expiration"
             label="Expirar Pedidos Pendientes Después de (minutos)"
             description="Tiempo antes de expirar automáticamente un pedido en borrador"
-            value={settings.draftOrderExpirationMinutes}
+            value={settings.draft_order_expire_minutes}
             onChange={(value) =>
-              updateSetting("draftOrderExpirationMinutes", value)
+              updateSetting("draft_order_expire_minutes", value ?? 1)
             }
-            disabled={!settings.sendOrderReminders}
+            disabled={!settings.send_order_reminders}
+            min={1}
           />
         </SettingsSection>
 
@@ -236,20 +298,20 @@ export default function SettingsPage() {
             id="orders-enabled"
             label="Habilitar Pedidos"
             description="Permitir que los clientes realicen pedidos"
-            checked={settings.ordersEnabled}
+            checked={settings.orders_enabled}
             onCheckedChange={(checked) =>
-              updateSetting("ordersEnabled", checked)
+              updateSetting("orders_enabled", checked)
             }
           />
           <ToggleField
             id="checkout-enabled"
             label="Habilitar Checkout"
             description="Permitir pagos en línea"
-            checked={settings.checkoutEnabled}
+            checked={settings.checkout_enabled}
             onCheckedChange={(checked) =>
-              updateSetting("checkoutEnabled", checked)
+              updateSetting("checkout_enabled", checked)
             }
-            disabled={!settings.ordersEnabled}
+            disabled={!settings.orders_enabled}
           />
         </SettingsSection>
 
@@ -262,58 +324,61 @@ export default function SettingsPage() {
             id="reservations-enabled"
             label="Habilitar Reservaciones"
             description="Permitir que los clientes hagan reservaciones"
-            checked={settings.reservationsEnabled}
+            checked={settings.reservations_enabled}
             onCheckedChange={(checked) =>
-              updateSetting("reservationsEnabled", checked)
+              updateSetting("reservations_enabled", checked)
             }
           />
           <NumberInputField
             id="min-advance-time"
             label="Tiempo Mínimo de Anticipación (minutos)"
             description="Tiempo mínimo antes de la reservación"
-            value={settings.minAdvanceTimeMinutes}
+            value={settings.reservation_min_lead_minutes}
             onChange={(value) =>
-              updateSetting("minAdvanceTimeMinutes", value)
+              updateSetting("reservation_min_lead_minutes", value ?? 0)
             }
-            disabled={!settings.reservationsEnabled}
+            disabled={!settings.reservations_enabled}
+            min={0}
           />
           <NumberInputField
             id="max-days-ahead"
             label="Días Máximos de Anticipación"
             description="Máximo de días de anticipación para reservar"
-            value={settings.maxDaysAhead}
-            onChange={(value) => updateSetting("maxDaysAhead", value)}
-            disabled={!settings.reservationsEnabled}
+            value={settings.reservation_max_days_ahead}
+            onChange={(value) => updateSetting("reservation_max_days_ahead", value ?? 1)}
+            disabled={!settings.reservations_enabled}
+            min={1}
           />
           <NumberInputField
             id="default-duration"
             label="Duración Predeterminada (minutos)"
             description="Duración por defecto de cada reservación"
-            value={settings.defaultDurationMinutes}
+            value={settings.reservation_default_duration_minutes}
             onChange={(value) =>
-              updateSetting("defaultDurationMinutes", value)
+              updateSetting("reservation_default_duration_minutes", value ?? 1)
             }
-            disabled={!settings.reservationsEnabled}
+            disabled={!settings.reservations_enabled}
+            min={1}
           />
           <ToggleField
             id="require-confirmation"
             label="Requerir Confirmación"
             description="Las reservaciones requieren confirmación manual"
-            checked={settings.requireConfirmation}
+            checked={settings.reservation_require_confirmation}
             onCheckedChange={(checked) =>
-              updateSetting("requireConfirmation", checked)
+              updateSetting("reservation_require_confirmation", checked)
             }
-            disabled={!settings.reservationsEnabled}
+            disabled={!settings.reservations_enabled}
           />
           <ToggleField
             id="allow-same-day"
             label="Permitir Reservaciones del Mismo Día"
             description="Permitir reservar para el día actual"
-            checked={settings.allowSameDayReservations}
+            checked={settings.reservation_allow_same_day}
             onCheckedChange={(checked) =>
-              updateSetting("allowSameDayReservations", checked)
+              updateSetting("reservation_allow_same_day", checked)
             }
-            disabled={!settings.reservationsEnabled}
+            disabled={!settings.reservations_enabled}
           />
         </SettingsSection>
       </div>
@@ -322,13 +387,22 @@ export default function SettingsPage() {
       <div className="flex items-center justify-end gap-3 border-t pt-6">
         <Button
           type="button"
+          variant="destructive"
+          onClick={handleResetDefaults}
+          disabled={isSaving || isResetting}
+        >
+          {isResetting && <Loader2 className="mr-2 size-4 animate-spin" />}
+          Restaurar defaults
+        </Button>
+        <Button
+          type="button"
           variant="outline"
           onClick={handleCancel}
-          disabled={isSaving}
+          disabled={isSaving || isResetting || !isDirty}
         >
           Cancelar
         </Button>
-        <Button type="button" onClick={handleSave} disabled={isSaving}>
+        <Button type="button" onClick={handleSave} disabled={isSaving || isResetting || !isDirty}>
           {isSaving && <Loader2 className="mr-2 size-4 animate-spin" />}
           Guardar Cambios
         </Button>
