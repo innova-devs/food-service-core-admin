@@ -40,21 +40,21 @@ export function ResetTokensModal({
             <div className="flex size-10 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-950">
               <AlertTriangle className="size-5 text-amber-600 dark:text-amber-400" />
             </div>
-            <AlertDialogTitle>Reset Tokens</AlertDialogTitle>
+            <AlertDialogTitle>Reiniciar tokens</AlertDialogTitle>
           </div>
           <AlertDialogDescription className="pt-2">
-            Are you sure you want to reset the token usage for {business?.name}?
-            This will reset their current usage of{" "}
+            ¿Seguro que querés reiniciar el uso de tokens de {business?.name}?
+            El uso actual de{" "}
             <span className="font-medium text-foreground">
               {formatTokens(business?.ai_monthly_tokens_used || 0)}
             </span>{" "}
-            tokens back to 0.
+            tokens volverá a 0.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>Cancelar</AlertDialogCancel>
           <AlertDialogAction onClick={handleConfirm}>
-            Reset Tokens
+            Reiniciar tokens
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

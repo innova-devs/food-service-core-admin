@@ -44,40 +44,40 @@ export function BusinessActionsDropdown({
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon-sm">
           <MoreHorizontal className="size-4" />
-          <span className="sr-only">Open actions menu</span>
+          <span className="sr-only">Abrir menú de acciones</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
         <DropdownMenuItem onClick={onViewDetails}>
           <Eye className="size-4" />
-          View Details
+          Ver detalle
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onChangePlan}>
           <CreditCard className="size-4" />
-          Change Plan
+          Cambiar plan
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onExtendSubscription}>
           <CalendarPlus className="size-4" />
-          Extend Subscription
+          Extender suscripción
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onToggleBlock}>
           {isBlocked ? (
             <>
               <Unlock className="size-4" />
-              Unblock
+              Desbloquear
             </>
           ) : (
             <>
               <Ban className="size-4" />
-              Block
+              Bloquear
             </>
           )}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onResetTokens}>
           <RotateCcw className="size-4" />
-          Reset Tokens
+          Reiniciar tokens
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

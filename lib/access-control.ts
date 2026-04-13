@@ -1,13 +1,24 @@
-export type UserRole = "STAFF" | "DELIVERY" | "ADMIN" | "MANAGER" | "OWNER" | "UNKNOWN"
+export type UserRole =
+  | "STAFF"
+  | "DELIVERY"
+  | "ADMIN"
+  | "MANAGER"
+  | "OWNER"
+  | "SUPER_ADMIN"
+  | "UNKNOWN"
+
+/** Home del panel super-admin (listado de negocios). */
+export const SUPER_ADMIN_HOME = "/super-admin/businesses"
 
 function normalizeRole(raw: unknown): UserRole {
   if (typeof raw !== "string") return "UNKNOWN"
-  const role = raw.trim().toUpperCase()
+  const role = raw.trim().toUpperCase().replace(/-/g, "_")
   if (role === "STAFF") return "STAFF"
   if (role === "DELIVERY") return "DELIVERY"
   if (role === "ADMIN") return "ADMIN"
   if (role === "MANAGER") return "MANAGER"
   if (role === "OWNER") return "OWNER"
+  if (role === "SUPER_ADMIN") return "SUPER_ADMIN"
   return "UNKNOWN"
 }
 
@@ -24,6 +35,15 @@ export function resolveUserRole(payload: Record<string, unknown>): UserRole {
   const realmAccess = payload.realm_access
   if (realmAccess && typeof realmAccess === "object") {
     const roles = (realmAccess as Record<string, unknown>).roles
+    if (
+      Array.isArray(roles) &&
+      roles.some(
+        (item) =>
+          String(item).toUpperCase().replace(/-/g, "_") === "SUPER_ADMIN",
+      )
+    ) {
+      return "SUPER_ADMIN"
+    }
     if (Array.isArray(roles) && roles.some((item) => String(item).toUpperCase() === "STAFF")) {
       return "STAFF"
     }
@@ -39,6 +59,17 @@ export function resolveUserRole(payload: Record<string, unknown>): UserRole {
 }
 
 export function canAccessPath(role: UserRole, pathname: string): boolean {
+  const isSuperAdminArea =
+    pathname === "/super-admin" || pathname.startsWith("/super-admin/")
+
+  if (isSuperAdminArea) {
+    return role === "SUPER_ADMIN"
+  }
+
+  if (role === "SUPER_ADMIN") {
+    return false
+  }
+
   if (role === "STAFF") {
     return pathname === "/check-in" || pathname.startsWith("/check-in/")
   }
@@ -66,5 +97,24 @@ export function canAccessPath(role: UserRole, pathname: string): boolean {
 export function defaultPathForRole(role: UserRole): string {
   if (role === "STAFF") return "/check-in"
   if (role === "DELIVERY") return "/delivery"
+  if (role === "SUPER_ADMIN") return SUPER_ADMIN_HOME
   return "/"
+}
+
+/**
+ * Tras login: respeta `from` solo si el rol puede acceder a esa ruta;
+ * si no, envía al home del rol.
+ */
+export function resolvePostLoginDestination(
+  role: UserRole,
+  fromParam: string | null | undefined,
+): string {
+  const from =
+    fromParam && fromParam.startsWith("/") && !fromParam.startsWith("//")
+      ? fromParam
+      : null
+  if (from && canAccessPath(role, from)) {
+    return from
+  }
+  return defaultPathForRole(role)
 }

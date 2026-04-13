@@ -7,6 +7,12 @@ interface BusinessStatusBadgeProps {
   status: BusinessStatus
 }
 
+const statusLabels: Record<BusinessStatus, string> = {
+  Active: "Activo",
+  Blocked: "Bloqueado",
+  Expired: "Vencido",
+}
+
 export function BusinessStatusBadge({ status }: BusinessStatusBadgeProps) {
   const variants: Record<BusinessStatus, { className: string }> = {
     Active: {
@@ -22,7 +28,7 @@ export function BusinessStatusBadge({ status }: BusinessStatusBadgeProps) {
 
   return (
     <Badge variant="outline" className={variants[status].className}>
-      {status}
+      {statusLabels[status]}
     </Badge>
   )
 }

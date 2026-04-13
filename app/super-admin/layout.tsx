@@ -5,5 +5,7 @@ export default function SuperAdminLayout({
 }: {
   children: React.ReactNode
 }) {
-  return <DashboardLayoutClient>{children}</DashboardLayoutClient>
+  return (
+    <DashboardLayoutClient variant="super-admin">{children}</DashboardLayoutClient>
+  )
 }

@@ -39,18 +39,18 @@ export function BlockModal({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            {isBlocked ? "Unblock Business" : "Block Business"}
+            {isBlocked ? "Desbloquear negocio" : "Bloquear negocio"}
           </AlertDialogTitle>
           <AlertDialogDescription>
             {isBlocked
-              ? `Are you sure you want to unblock ${business?.name}? This will restore their AI access.`
-              : `Are you sure you want to block ${business?.name}? This will immediately disable their AI access.`}
+              ? `¿Seguro que querés desbloquear a ${business?.name}? Se restaurará el acceso a la IA.`
+              : `¿Seguro que querés bloquear a ${business?.name}? Se desactivará de inmediato el acceso a la IA.`}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>Cancelar</AlertDialogCancel>
           <AlertDialogAction onClick={handleConfirm}>
-            {isBlocked ? "Unblock" : "Block"}
+            {isBlocked ? "Desbloquear" : "Bloquear"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

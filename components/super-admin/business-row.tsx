@@ -1,6 +1,7 @@
 "use client"
 
 import { format } from "date-fns"
+import { es } from "date-fns/locale"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { UsageProgress } from "./usage-progress"
 import { BusinessStatusBadge } from "./business-status-badge"
@@ -55,7 +56,9 @@ export function BusinessRow({
       </TableCell>
       <TableCell>
         <span className="text-sm text-muted-foreground">
-          {format(new Date(business.subscription.current_period_end), "MMM d, yyyy")}
+          {format(new Date(business.subscription.current_period_end), "d MMM yyyy", {
+            locale: es,
+          })}
         </span>
       </TableCell>
       <TableCell>

@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { format, addDays } from "date-fns"
+import { es } from "date-fns/locale"
 import { CalendarIcon } from "lucide-react"
 import {
   Dialog,
@@ -35,8 +36,15 @@ export function ExtendSubscriptionModal({
     ? new Date(business.subscription.current_period_end)
     : new Date()
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(
-    addDays(currentEndDate, 30)
+    addDays(currentEndDate, 30),
   )
+
+  useEffect(() => {
+    if (open && business) {
+      const end = new Date(business.subscription.current_period_end)
+      setSelectedDate(addDays(end, 30))
+    }
+  }, [open, business])
 
   const handleQuickExtend = (days: number) => {
     setSelectedDate(addDays(currentEndDate, days))
@@ -53,60 +61,60 @@ export function ExtendSubscriptionModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Extend Subscription</DialogTitle>
+          <DialogTitle>Extender suscripción</DialogTitle>
           <DialogDescription>
-            Extend the subscription period for {business?.name}
+            Ampliar el período de suscripción de {business?.name}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4 py-4">
           <div className="flex flex-col gap-2">
-            <Label>Current End Date</Label>
+            <Label>Fecha de fin actual</Label>
             <p className="text-sm text-muted-foreground">
-              {format(currentEndDate, "MMMM d, yyyy")}
+              {format(currentEndDate, "d MMMM yyyy", { locale: es })}
             </p>
           </div>
           <div className="flex flex-col gap-2">
-            <Label>Quick Extend</Label>
+            <Label>Extensión rápida</Label>
             <div className="flex gap-2">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => handleQuickExtend(30)}
               >
-                +30 days
+                +30 días
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => handleQuickExtend(60)}
               >
-                +60 days
+                +60 días
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => handleQuickExtend(90)}
               >
-                +90 days
+                +90 días
               </Button>
             </div>
           </div>
           <div className="flex flex-col gap-2">
-            <Label>Custom Date</Label>
+            <Label>Fecha personalizada</Label>
             <Popover>
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
                   className={cn(
                     "w-full justify-start text-left font-normal",
-                    !selectedDate && "text-muted-foreground"
+                    !selectedDate && "text-muted-foreground",
                   )}
                 >
                   <CalendarIcon className="mr-2 size-4" />
                   {selectedDate ? (
-                    format(selectedDate, "MMMM d, yyyy")
+                    format(selectedDate, "d MMMM yyyy", { locale: es })
                   ) : (
-                    <span>Pick a date</span>
+                    <span>Elegí una fecha</span>
                   )}
                 </Button>
               </PopoverTrigger>
@@ -117,6 +125,7 @@ export function ExtendSubscriptionModal({
                   onSelect={setSelectedDate}
                   disabled={(date) => date < currentEndDate}
                   initialFocus
+                  locale={es}
                 />
               </PopoverContent>
             </Popover>
@@ -124,10 +133,10 @@ export function ExtendSubscriptionModal({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            Cancelar
           </Button>
           <Button onClick={handleConfirm} disabled={!selectedDate}>
-            Confirm
+            Confirmar
           </Button>
         </DialogFooter>
       </DialogContent>

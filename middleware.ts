@@ -2,7 +2,10 @@ import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
 import { AUTH_COOKIE_NAME, getUserRoleFromToken } from "@/lib/auth"
-import { canAccessPath, defaultPathForRole } from "@/lib/access-control"
+import {
+  canAccessPath,
+  defaultPathForRole,
+} from "@/lib/access-control"
 
 const LOGIN_PATH = "/login"
 
@@ -17,7 +20,10 @@ export function middleware(request: NextRequest) {
 
   if (pathname === LOGIN_PATH || pathname.startsWith(`${LOGIN_PATH}/`)) {
     if (token) {
-      return NextResponse.redirect(new URL("/", request.url))
+      const role = getUserRoleFromToken(token)
+      return NextResponse.redirect(
+        new URL(defaultPathForRole(role), request.url),
+      )
     }
     return NextResponse.next()
   }

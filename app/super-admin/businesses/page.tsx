@@ -1,11 +1,14 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
+import { isAxiosError } from "axios"
 import { toast } from "sonner"
 import { Search } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   Pagination,
   PaginationContent,
@@ -20,50 +23,70 @@ import { ChangePlanModal } from "@/components/super-admin/change-plan-modal"
 import { ExtendSubscriptionModal } from "@/components/super-admin/extend-subscription-modal"
 import { BlockModal } from "@/components/super-admin/block-modal"
 import { ResetTokensModal } from "@/components/super-admin/reset-tokens-modal"
-import { mockBusinesses } from "@/components/super-admin/mock-data"
 import type { BusinessWithSubscription, Subscription } from "@/components/super-admin/types"
 import { getBusinessStatus } from "@/components/super-admin/types"
+import {
+  fetchSuperAdminBusinesses,
+} from "@/lib/requests/super-admin-businesses"
 
 const ITEMS_PER_PAGE = 8
 
 export default function BusinessesPage() {
   const router = useRouter()
-  const [businesses, setBusinesses] = useState<BusinessWithSubscription[]>(mockBusinesses)
+  const [businesses, setBusinesses] = useState<BusinessWithSubscription[]>([])
+  const [total, setTotal] = useState(0)
   const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedQ, setDebouncedQ] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
-  
-  // Modal states
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+
   const [selectedBusiness, setSelectedBusiness] = useState<BusinessWithSubscription | null>(null)
   const [changePlanOpen, setChangePlanOpen] = useState(false)
   const [extendOpen, setExtendOpen] = useState(false)
   const [blockOpen, setBlockOpen] = useState(false)
   const [resetTokensOpen, setResetTokensOpen] = useState(false)
 
-  // Filter businesses by search query
-  const filteredBusinesses = useMemo(() => {
-    if (!searchQuery.trim()) return businesses
-    const query = searchQuery.toLowerCase()
-    return businesses.filter((b) =>
-      b.name.toLowerCase().includes(query) ||
-      b.id.toLowerCase().includes(query) ||
-      b.subscription.plan_name.toLowerCase().includes(query)
-    )
-  }, [businesses, searchQuery])
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedQ(searchQuery.trim()), 400)
+    return () => window.clearTimeout(t)
+  }, [searchQuery])
 
-  // Pagination
-  const totalPages = Math.ceil(filteredBusinesses.length / ITEMS_PER_PAGE)
-  const paginatedBusinesses = useMemo(() => {
-    const start = (currentPage - 1) * ITEMS_PER_PAGE
-    return filteredBusinesses.slice(start, start + ITEMS_PER_PAGE)
-  }, [filteredBusinesses, currentPage])
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedQ])
 
-  // Reset to page 1 when search changes
+  const loadList = useCallback(async () => {
+    setIsLoading(true)
+    setLoadError(null)
+    try {
+      const { items, total: count } = await fetchSuperAdminBusinesses({
+        offset: (currentPage - 1) * ITEMS_PER_PAGE,
+        limit: ITEMS_PER_PAGE,
+        q: debouncedQ || undefined,
+      })
+      setBusinesses(items)
+      setTotal(count)
+    } catch (e) {
+      const msg = isAxiosError(e)
+        ? (e.response?.data as { message?: string; error?: string })?.message ??
+          (e.response?.data as { message?: string; error?: string })?.error ??
+          e.message
+        : "No se pudieron cargar los negocios."
+      setLoadError(typeof msg === "string" && msg ? msg : "No se pudieron cargar los negocios.")
+    } finally {
+      setIsLoading(false)
+    }
+  }, [currentPage, debouncedQ])
+
+  useEffect(() => {
+    void loadList()
+  }, [loadList])
+
   const handleSearchChange = (value: string) => {
     setSearchQuery(value)
-    setCurrentPage(1)
   }
 
-  // Action handlers
   const handleViewDetails = (business: BusinessWithSubscription) => {
     router.push(`/super-admin/businesses/${business.id}`)
   }
@@ -88,16 +111,15 @@ export default function BusinessesPage() {
     setResetTokensOpen(true)
   }
 
-  // Confirm handlers
   const confirmChangePlan = (plan: Subscription["plan_name"]) => {
     if (!selectedBusiness) return
-    
+
     const tokenLimits: Record<Subscription["plan_name"], number> = {
       Basic: 50000,
       Pro: 100000,
       Business: 250000,
     }
-    
+
     setBusinesses((prev) =>
       prev.map((b) =>
         b.id === selectedBusiness.id
@@ -106,10 +128,10 @@ export default function BusinessesPage() {
               ai_monthly_token_limit: tokenLimits[plan],
               subscription: { ...b.subscription, plan_name: plan },
             }
-          : b
-      )
+          : b,
+      ),
     )
-    toast.success(`Plan changed to ${plan} for ${selectedBusiness.name}`)
+    toast.success(`Plan cambiado a ${plan} para ${selectedBusiness.name}`)
   }
 
   const confirmExtendSubscription = (newEndDate: Date) => {
@@ -124,10 +146,10 @@ export default function BusinessesPage() {
                 current_period_end: newEndDate.toISOString(),
               },
             }
-          : b
-      )
+          : b,
+      ),
     )
-    toast.success(`Subscription extended for ${selectedBusiness.name}`)
+    toast.success(`Suscripción extendida para ${selectedBusiness.name}`)
   }
 
   const confirmToggleBlock = () => {
@@ -135,15 +157,13 @@ export default function BusinessesPage() {
     const wasBlocked = selectedBusiness.ai_blocked
     setBusinesses((prev) =>
       prev.map((b) =>
-        b.id === selectedBusiness.id
-          ? { ...b, ai_blocked: !b.ai_blocked }
-          : b
-      )
+        b.id === selectedBusiness.id ? { ...b, ai_blocked: !b.ai_blocked } : b,
+      ),
     )
     toast.success(
       wasBlocked
-        ? `${selectedBusiness.name} has been unblocked`
-        : `${selectedBusiness.name} has been blocked`
+        ? `${selectedBusiness.name} fue desbloqueado`
+        : `${selectedBusiness.name} fue bloqueado`,
     )
   }
 
@@ -151,34 +171,41 @@ export default function BusinessesPage() {
     if (!selectedBusiness) return
     setBusinesses((prev) =>
       prev.map((b) =>
-        b.id === selectedBusiness.id
-          ? { ...b, ai_monthly_tokens_used: 0 }
-          : b
-      )
+        b.id === selectedBusiness.id ? { ...b, ai_monthly_tokens_used: 0 } : b,
+      ),
     )
-    toast.success(`Tokens reset for ${selectedBusiness.name}`)
+    toast.success(`Tokens reiniciados para ${selectedBusiness.name}`)
   }
 
   const selectedStatus = selectedBusiness
     ? getBusinessStatus(selectedBusiness, selectedBusiness.subscription)
     : "Active"
 
+  const totalPages = Math.max(1, Math.ceil(total / ITEMS_PER_PAGE))
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Businesses</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Negocios</h1>
         <p className="text-muted-foreground">
-          Manage all businesses and their subscriptions
+          Administrá negocios y suscripciones
         </p>
       </div>
 
+      {loadError ? (
+        <Alert variant="destructive">
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{loadError}</AlertDescription>
+        </Alert>
+      ) : null}
+
       <Card>
         <CardHeader className="flex flex-row items-center justify-between border-b pb-4">
-          <CardTitle className="text-base font-medium">All Businesses</CardTitle>
+          <CardTitle className="text-base font-medium">Todos los negocios</CardTitle>
           <div className="relative w-64">
             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Search businesses..."
+              placeholder="Buscar por nombre..."
               value={searchQuery}
               onChange={(e) => handleSearchChange(e.target.value)}
               className="pl-9"
@@ -186,22 +213,31 @@ export default function BusinessesPage() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <BusinessesTable
-            businesses={paginatedBusinesses}
-            onViewDetails={handleViewDetails}
-            onChangePlan={handleChangePlan}
-            onExtendSubscription={handleExtendSubscription}
-            onToggleBlock={handleToggleBlock}
-            onResetTokens={handleResetTokens}
-          />
+          {isLoading ? (
+            <div className="flex flex-col gap-2 p-4">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : (
+            <BusinessesTable
+              businesses={businesses}
+              onViewDetails={handleViewDetails}
+              onChangePlan={handleChangePlan}
+              onExtendSubscription={handleExtendSubscription}
+              onToggleBlock={handleToggleBlock}
+              onResetTokens={handleResetTokens}
+            />
+          )}
         </CardContent>
       </Card>
 
-      {totalPages > 1 && (
-        <Pagination>
+      {!isLoading && totalPages > 1 && (
+        <Pagination aria-label="Paginación de negocios">
           <PaginationContent>
             <PaginationItem>
               <PaginationPrevious
+                label="Anterior"
                 href="#"
                 onClick={(e) => {
                   e.preventDefault()
@@ -235,7 +271,7 @@ export default function BusinessesPage() {
               if (page === currentPage - 2 || page === currentPage + 2) {
                 return (
                   <PaginationItem key={page}>
-                    <PaginationEllipsis />
+                    <PaginationEllipsis srOnlyLabel="Más páginas" />
                   </PaginationItem>
                 )
               }
@@ -243,20 +279,30 @@ export default function BusinessesPage() {
             })}
             <PaginationItem>
               <PaginationNext
+                label="Siguiente"
                 href="#"
                 onClick={(e) => {
                   e.preventDefault()
                   setCurrentPage((p) => Math.min(totalPages, p + 1))
                 }}
                 aria-disabled={currentPage === totalPages}
-                className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
+                className={
+                  currentPage === totalPages ? "pointer-events-none opacity-50" : ""
+                }
               />
             </PaginationItem>
           </PaginationContent>
         </Pagination>
       )}
 
-      {/* Modals */}
+      {!isLoading ? (
+        <p className="text-center text-sm text-muted-foreground">
+          {total === 0
+            ? "Sin resultados"
+            : `Mostrando ${(currentPage - 1) * ITEMS_PER_PAGE + 1}–${Math.min(currentPage * ITEMS_PER_PAGE, total)} de ${total}`}
+        </p>
+      ) : null}
+
       <ChangePlanModal
         business={selectedBusiness}
         open={changePlanOpen}

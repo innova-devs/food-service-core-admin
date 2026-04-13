@@ -30,7 +30,7 @@ export function BusinessesTable({
   if (businesses.length === 0) {
     return (
       <div className="flex items-center justify-center py-12 text-muted-foreground">
-        No businesses found
+        No hay negocios para mostrar
       </div>
     )
   }
@@ -39,14 +39,14 @@ export function BusinessesTable({
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Business Name</TableHead>
+          <TableHead>Negocio</TableHead>
           <TableHead>Plan</TableHead>
-          <TableHead>Tokens Used / Limit</TableHead>
-          <TableHead>Usage</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead>Subscription End</TableHead>
+          <TableHead>Tokens (uso / límite)</TableHead>
+          <TableHead>Uso</TableHead>
+          <TableHead>Estado</TableHead>
+          <TableHead>Fin de suscripción</TableHead>
           <TableHead className="w-12">
-            <span className="sr-only">Actions</span>
+            <span className="sr-only">Acciones</span>
           </TableHead>
         </TableRow>
       </TableHeader>

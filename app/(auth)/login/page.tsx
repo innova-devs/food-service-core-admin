@@ -8,7 +8,8 @@ import * as z from "zod"
 import { isAxiosError } from "axios"
 import { LayoutDashboard } from "lucide-react"
 
-import { resolveAccessToken, setAuthCookie } from "@/lib/auth"
+import { getUserRoleFromToken, resolveAccessToken, setAuthCookie } from "@/lib/auth"
+import { resolvePostLoginDestination } from "@/lib/access-control"
 import { login } from "@/lib/requests/login"
 import { Button } from "@/components/ui/button"
 import {
@@ -35,11 +36,6 @@ const loginSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginSchema>
 
-function safeRedirectPath(from: string | null): string {
-  if (!from || !from.startsWith("/") || from.startsWith("//")) return "/"
-  return from
-}
-
 function LoginForm() {
   const router = useRouter()
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -64,11 +60,12 @@ function LoginForm() {
         return
       }
       setAuthCookie(token)
+      const role = getUserRoleFromToken(token)
       const from =
         typeof window !== "undefined"
           ? new URLSearchParams(window.location.search).get("from")
           : null
-      const dest = safeRedirectPath(from)
+      const dest = resolvePostLoginDestination(role, from)
       router.push(dest)
       router.refresh()
     } catch (err) {

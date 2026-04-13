@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   Dialog,
   DialogContent,
@@ -34,8 +34,14 @@ export function ChangePlanModal({
   onConfirm,
 }: ChangePlanModalProps) {
   const [selectedPlan, setSelectedPlan] = useState<Subscription["plan_name"]>(
-    business?.subscription.plan_name || "Basic"
+    business?.subscription.plan_name || "Basic",
   )
+
+  useEffect(() => {
+    if (open && business) {
+      setSelectedPlan(business.subscription.plan_name)
+    }
+  }, [open, business])
 
   const handleConfirm = () => {
     onConfirm(selectedPlan)
@@ -46,38 +52,46 @@ export function ChangePlanModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Change Plan</DialogTitle>
+          <DialogTitle>Cambiar plan</DialogTitle>
           <DialogDescription>
-            Change the subscription plan for {business?.name}
+            Cambiar el plan de suscripción de {business?.name}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4 py-4">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="plan">Select Plan</Label>
+            <Label htmlFor="plan">Seleccionar plan</Label>
             <Select
               value={selectedPlan}
-              onValueChange={(value) => setSelectedPlan(value as Subscription["plan_name"])}
+              onValueChange={(value) =>
+                setSelectedPlan(value as Subscription["plan_name"])
+              }
             >
               <SelectTrigger id="plan" className="w-full">
-                <SelectValue placeholder="Select a plan" />
+                <SelectValue placeholder="Elegí un plan" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="Basic">
                   <div className="flex flex-col items-start">
                     <span className="font-medium">Basic</span>
-                    <span className="text-xs text-muted-foreground">50k tokens/month</span>
+                    <span className="text-xs text-muted-foreground">
+                      50k tokens / mes
+                    </span>
                   </div>
                 </SelectItem>
                 <SelectItem value="Pro">
                   <div className="flex flex-col items-start">
                     <span className="font-medium">Pro</span>
-                    <span className="text-xs text-muted-foreground">100k tokens/month</span>
+                    <span className="text-xs text-muted-foreground">
+                      100k tokens / mes
+                    </span>
                   </div>
                 </SelectItem>
                 <SelectItem value="Business">
                   <div className="flex flex-col items-start">
                     <span className="font-medium">Business</span>
-                    <span className="text-xs text-muted-foreground">250k tokens/month</span>
+                    <span className="text-xs text-muted-foreground">
+                      250k tokens / mes
+                    </span>
                   </div>
                 </SelectItem>
               </SelectContent>
@@ -86,9 +100,9 @@ export function ChangePlanModal({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            Cancelar
           </Button>
-          <Button onClick={handleConfirm}>Confirm</Button>
+          <Button onClick={handleConfirm}>Confirmar</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
