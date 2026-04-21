@@ -505,6 +505,7 @@ export default function MessagesPage() {
             await sendAdminWhatsappMessage(
               conversationId,
               BOT_REENGAGE_MESSAGE,
+              { skipHumanTakeover: true },
             )
           } catch {
             toast.warning(

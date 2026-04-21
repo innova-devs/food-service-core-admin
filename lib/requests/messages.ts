@@ -167,13 +167,23 @@ function adminWhatsappConversationMessagesPath(conversationId: string): string {
   return `/admin/whatsapp/conversations/${conversationId}/messages`
 }
 
+export type SendAdminWhatsappMessageOptions = {
+  /** Solo true en el aviso automático al reactivar el bot; omitir en envíos manuales del operador. */
+  skipHumanTakeover?: boolean
+}
+
 export async function sendAdminWhatsappMessage(
   conversationId: string,
   message: string,
+  options?: SendAdminWhatsappMessageOptions,
 ): Promise<{ id: string | null }> {
+  const body: { message: string; skipHumanTakeover?: boolean } = { message }
+  if (options?.skipHumanTakeover === true) {
+    body.skipHumanTakeover = true
+  }
   const { data } = await api.post<AdminWhatsappSendMessageRaw>(
     adminWhatsappConversationMessagesPath(conversationId),
-    { message },
+    body,
   )
   const id = data.id ?? data.message_id ?? null
   return { id: typeof id === "string" && id.trim() ? id : null }
