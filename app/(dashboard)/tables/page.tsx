@@ -3,8 +3,20 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react"
 import { isAxiosError } from "axios"
 import { toast } from "sonner"
-import { Plus, Save, Move, Square, Circle, Users, Trash2, Loader2, X } from "lucide-react"
+import {
+  Plus,
+  Save,
+  Move,
+  Square,
+  Circle,
+  Users,
+  Trash2,
+  Loader2,
+  X,
+  CalendarClock,
+} from "lucide-react"
 
+import { useAdminSocket } from "@/contexts/admin-socket-context"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -28,6 +40,11 @@ import {
   uiTableToPatch,
   type UiTable,
 } from "@/lib/requests/admin-tables"
+import {
+  aggregateReservationsByTableId,
+  fetchTodayReservationRaws,
+  type TableReservationSlot,
+} from "@/lib/requests/reservations"
 
 const statusColors = {
   active: "bg-emerald-500",
@@ -63,6 +80,7 @@ type SaveBanner =
   | { kind: "error"; message: string }
 
 export default function TablesPage() {
+  const { subscribeToReservationRealtime } = useAdminSocket()
   const [tables, setTables] = useState<UiTable[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -71,7 +89,12 @@ export default function TablesPage() {
   const [deletingTable, setDeletingTable] = useState(false)
   const [saveBanner, setSaveBanner] = useState<SaveBanner | null>(null)
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null)
-  const [environmentFilter, setEnvironmentFilter] = useState("all")
+  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState("")
+  const [reservationByTableId, setReservationByTableId] = useState<
+    Map<string, TableReservationSlot[]>
+  >(() => new Map())
+  const [reservationsError, setReservationsError] = useState<string | null>(null)
+  const [reservationsLoading, setReservationsLoading] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const canvasRef = useRef<HTMLDivElement>(null)
@@ -84,28 +107,76 @@ export default function TablesPage() {
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }))
   }, [tables])
 
+  /** Un ambiente a la vez: no hay vista “todos mezclados”. */
+  const activeEnvironmentId = useMemo(() => {
+    if (environmentOptions.length === 0) return ""
+    if (
+      selectedEnvironmentId &&
+      environmentOptions.some((e) => e.id === selectedEnvironmentId)
+    ) {
+      return selectedEnvironmentId
+    }
+    return environmentOptions[0].id
+  }, [environmentOptions, selectedEnvironmentId])
+
+  const loadReservationsMap = useCallback(async () => {
+    setReservationsLoading(true)
+    setReservationsError(null)
+    try {
+      const raws = await fetchTodayReservationRaws()
+      setReservationByTableId(aggregateReservationsByTableId(raws))
+    } catch (e) {
+      setReservationsError(apiErrorMessage(e, "No se pudieron cargar las reservas del día."))
+      setReservationByTableId(new Map())
+    } finally {
+      setReservationsLoading(false)
+    }
+  }, [])
+
   const loadTables = useCallback(async () => {
     setIsLoading(true)
     setLoadError(null)
     try {
       const rows = await fetchAdminTables()
       setTables(rows.map(adminTableToUi))
+      void loadReservationsMap()
     } catch (e) {
       setLoadError(apiErrorMessage(e, "No se pudieron cargar las mesas."))
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [loadReservationsMap])
 
   useEffect(() => {
     void loadTables()
   }, [loadTables])
 
-  const filteredTables = tables.filter(
-    (table) => environmentFilter === "all" || table.environmentId === environmentFilter,
+  useEffect(() => {
+    return subscribeToReservationRealtime(() => {
+      void loadReservationsMap()
+    })
+  }, [subscribeToReservationRealtime, loadReservationsMap])
+
+  const tablesInActiveEnvironment = useMemo(
+    () =>
+      activeEnvironmentId
+        ? tables.filter((t) => t.environmentId === activeEnvironmentId)
+        : [],
+    [tables, activeEnvironmentId],
   )
 
   const selectedTable = tables.find((t) => t.id === selectedTableId) || null
+  const selectedReservationSlots = selectedTableId
+    ? reservationByTableId.get(selectedTableId)
+    : undefined
+
+  useEffect(() => {
+    if (!selectedTableId || !activeEnvironmentId) return
+    const row = tables.find((x) => x.id === selectedTableId)
+    if (row && row.environmentId !== activeEnvironmentId) {
+      setSelectedTableId(null)
+    }
+  }, [activeEnvironmentId, selectedTableId, tables])
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent, tableId: string) => {
@@ -166,10 +237,7 @@ export default function TablesPage() {
   )
 
   const addNewTable = useCallback(async () => {
-    const envId =
-      environmentFilter !== "all"
-        ? environmentFilter
-        : environmentOptions[0]?.id ?? null
+    const envId = activeEnvironmentId || null
 
     if (!envId) {
       const msg =
@@ -199,32 +267,35 @@ export default function TablesPage() {
       toast.error("Error al crear mesa", { description: msg })
       setSaveBanner({ kind: "error", message: msg })
     }
-  }, [environmentFilter, environmentOptions, tables])
+  }, [activeEnvironmentId, tables])
 
   const saveLayout = useCallback(async () => {
+    const toSave = tables.filter((t) => t.environmentId === activeEnvironmentId)
+    if (toSave.length === 0) return
+
     setSavingLayout(true)
     setSaveBanner(null)
     const loadingId = toast.loading("Guardando layout…", {
-      description: `Sincronizando ${tables.length} ${tables.length === 1 ? "mesa" : "mesas"} con el servidor.`,
+      description: `Sincronizando ${toSave.length} ${toSave.length === 1 ? "mesa" : "mesas"} del ambiente actual.`,
     })
     try {
       await Promise.all(
-        tables.map((t) => patchAdminTable(t.id, uiTableToPatch(t))),
+        toSave.map((t) => patchAdminTable(t.id, uiTableToPatch(t))),
       )
       toast.dismiss(loadingId)
-      const desc = `Se actualizaron ${tables.length} ${tables.length === 1 ? "mesa" : "mesas"}.`
+      const desc = `Se actualizaron ${toSave.length} ${toSave.length === 1 ? "mesa" : "mesas"} en este ambiente.`
       toast.success("Layout guardado", { description: desc })
       setSaveBanner({ kind: "success", message: desc })
       await loadTables()
     } catch (e) {
       toast.dismiss(loadingId)
-      const msg = apiErrorMessage(e, "No se pudo guardar el layout completo.")
+      const msg = apiErrorMessage(e, "No se pudo guardar el layout de este ambiente.")
       toast.error("Error al guardar layout", { description: msg })
       setSaveBanner({ kind: "error", message: msg })
     } finally {
       setSavingLayout(false)
     }
-  }, [tables, loadTables])
+  }, [tables, activeEnvironmentId, loadTables])
 
   const saveSelectedProperties = useCallback(async () => {
     if (!selectedTable) return
@@ -292,9 +363,11 @@ export default function TablesPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Mesas</h1>
           <p className="text-muted-foreground">
-            Mové las mesas en el plano y pulsá{" "}
+            Cada ambiente tiene un plano independiente: elegí uno en el selector. Las
+            reservas del día se sincronizan con el listado de reservas y se muestran sobre
+            la mesa con el horario. Mové las mesas y pulsá{" "}
             <span className="font-medium text-foreground">Guardar layout</span> para
-            guardar posiciones en el servidor. Los datos de cada mesa se confirman con{" "}
+            persistir solo este ambiente. Los datos de cada mesa se confirman con{" "}
             <span className="font-medium text-foreground">Guardar cambios</span>.
           </p>
         </div>
@@ -308,9 +381,14 @@ export default function TablesPage() {
             Agregar mesa
           </Button>
           <Button
-            title="Envía posición, forma y rotación de todas las mesas al servidor"
+            title="Envía posición, forma y rotación de las mesas de este ambiente"
             onClick={() => void saveLayout()}
-            disabled={savingLayout || savingProperties || deletingTable || tables.length === 0}
+            disabled={
+              savingLayout ||
+              savingProperties ||
+              deletingTable ||
+              tablesInActiveEnvironment.length === 0
+            }
           >
             {savingLayout ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -366,23 +444,50 @@ export default function TablesPage() {
         </Alert>
       ) : null}
 
-      <div className="flex items-center gap-4">
-        <Label htmlFor="environment-filter" className="text-sm font-medium">
-          Ambiente:
-        </Label>
-        <Select value={environmentFilter} onValueChange={setEnvironmentFilter}>
-          <SelectTrigger id="environment-filter" className="w-[220px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos los ambientes</SelectItem>
-            {environmentOptions.map((env) => (
-              <SelectItem key={env.id} value={env.id}>
-                {env.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2">
+          <Label htmlFor="environment-filter" className="text-sm font-medium">
+            Ambiente:
+          </Label>
+          <Select
+            value={activeEnvironmentId || ""}
+            onValueChange={setSelectedEnvironmentId}
+            disabled={environmentOptions.length === 0}
+          >
+            <SelectTrigger id="environment-filter" className="w-[220px]">
+              <SelectValue
+                placeholder={environmentOptions.length === 0 ? "Sin ambientes" : undefined}
+              />
+            </SelectTrigger>
+            <SelectContent>
+              {environmentOptions.map((env) => (
+                <SelectItem key={env.id} value={env.id}>
+                  {env.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {reservationsLoading ? (
+          <span className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="size-3.5 animate-spin" />
+            Actualizando reservas del día…
+          </span>
+        ) : null}
+        {reservationsError ? (
+          <div className="flex max-w-md flex-col gap-1 text-xs text-destructive sm:flex-row sm:items-center sm:gap-2">
+            <span className="text-pretty">{reservationsError}</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 w-fit shrink-0"
+              onClick={() => void loadReservationsMap()}
+            >
+              Reintentar
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       <div className="flex gap-6">
@@ -401,7 +506,7 @@ export default function TablesPage() {
                 onMouseLeave={handleMouseUp}
                 onClick={handleCanvasClick}
               >
-                {filteredTables.length === 0 ? (
+                {tablesInActiveEnvironment.length === 0 ? (
                   <div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground">
                     <Square className="h-12 w-12 opacity-40" />
                     <p className="text-sm">No hay mesas en este ambiente</p>
@@ -416,10 +521,11 @@ export default function TablesPage() {
                     </Button>
                   </div>
                 ) : (
-                  filteredTables.map((table) => (
+                  tablesInActiveEnvironment.map((table) => (
                     <TableElement
                       key={table.id}
                       table={table}
+                      reservationSlots={reservationByTableId.get(table.id)}
                       isSelected={selectedTableId === table.id}
                       onMouseDown={(e) => handleMouseDown(e, table.id)}
                     />
@@ -439,6 +545,13 @@ export default function TablesPage() {
                 </span>
               </div>
             ))}
+            <div className="flex items-center gap-2">
+              <div
+                className="box-border h-3 w-3 rounded-full border-2 border-amber-400 bg-emerald-500"
+                title="Mesa activa con reserva"
+              />
+              <span className="text-sm text-muted-foreground">Con reserva hoy</span>
+            </div>
           </div>
         </div>
 
@@ -454,6 +567,31 @@ export default function TablesPage() {
               <div className="space-y-2">
                 <Label>Ambiente</Label>
                 <p className="text-sm text-muted-foreground">{selectedTable.environmentName}</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <CalendarClock className="size-4" />
+                  Reservas hoy
+                </Label>
+                {selectedReservationSlots?.length ? (
+                  <ul className="space-y-2 text-sm">
+                    {selectedReservationSlots.map((slot) => (
+                      <li
+                        key={slot.reservationId}
+                        className="rounded-md border bg-muted/40 px-3 py-2"
+                      >
+                        <p className="font-medium tabular-nums">{slot.timeRangeLabel}</p>
+                        <p className="text-muted-foreground">{slot.customerLabel}</p>
+                        <p className="text-xs text-muted-foreground">Estado: {slot.status}</p>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Sin reservas activas asignadas a esta mesa para hoy.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -607,25 +745,32 @@ export default function TablesPage() {
 
 function TableElement({
   table,
+  reservationSlots,
   isSelected,
   onMouseDown,
 }: {
   table: UiTable
+  reservationSlots?: TableReservationSlot[]
   isSelected: boolean
   onMouseDown: (e: React.MouseEvent) => void
 }) {
   const colorKey = table.isActive ? "active" : "inactive"
+  const hasReservation = Boolean(reservationSlots?.length)
   const baseClasses = cn(
     "absolute flex cursor-move flex-col items-center justify-center border-2 transition-shadow",
     statusColors[colorKey],
-    isSelected
-      ? "ring-2 ring-primary ring-offset-2 shadow-lg"
-      : "hover:shadow-md",
+    isSelected && "z-10 ring-2 ring-primary ring-offset-2 ring-offset-background shadow-lg",
+    !isSelected &&
+      hasReservation &&
+      "ring-2 ring-amber-400 ring-offset-2 ring-offset-background shadow-md",
+    !isSelected && !hasReservation && "hover:shadow-md",
   )
 
   const size = table.shape === "circle" ? 64 : undefined
   const width = table.shape === "rect" ? (table.width ?? 100) : size
   const height = table.shape === "rect" ? (table.height ?? 60) : size
+
+  const firstSlot = reservationSlots?.[0]
 
   return (
     <div
@@ -639,7 +784,20 @@ function TableElement({
       }}
       onMouseDown={onMouseDown}
     >
-      <span className="text-sm font-bold text-white drop-shadow-sm">{table.name}</span>
+      <span className="text-center text-sm font-bold text-white drop-shadow-sm">
+        {table.name}
+      </span>
+      {firstSlot ? (
+        <span
+          className="mt-0.5 line-clamp-2 max-w-[95%] text-center text-[10px] font-medium leading-tight text-white drop-shadow"
+          title={reservationSlots?.map((s) => s.timeRangeLabel).join(" · ")}
+        >
+          {firstSlot.timeRangeLabel}
+          {reservationSlots && reservationSlots.length > 1
+            ? ` (+${reservationSlots.length - 1})`
+            : ""}
+        </span>
+      ) : null}
       <span className="flex items-center gap-0.5 text-xs text-white/90">
         <Users className="h-3 w-3" />
         {table.capacity}

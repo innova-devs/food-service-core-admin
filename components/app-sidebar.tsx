@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { ShoppingCart, CalendarDays, LayoutDashboard, QrCode, Truck, MessageSquare, UtensilsCrossed, MapPin, Settings, Armchair } from "lucide-react"
+import { ShoppingCart, CalendarDays, LayoutDashboard, QrCode, Truck, MessageSquare, UtensilsCrossed, MapPin, Settings, Armchair, Clock3 } from "lucide-react"
 
 import {
   Sidebar,
@@ -51,6 +51,12 @@ const navItems: {
     title: "Mesas",
     href: "/tables",
     icon: Armchair,
+    allowedRoles: ["ADMIN", "OWNER"],
+  },
+  {
+    title: "Horarios",
+    href: "/hours",
+    icon: Clock3,
     allowedRoles: ["ADMIN", "OWNER"],
   },
   {

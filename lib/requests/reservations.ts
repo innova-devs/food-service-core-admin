@@ -73,6 +73,29 @@ function formatReservationTime(iso: string): string {
   }).format(d)
 }
 
+/** Alineado a la lista de reservas: terminadas no ocupan mesa en el plano. */
+export function isAdminReservationTerminated(status: string): boolean {
+  const s = status.toLowerCase()
+  return s === "cancelled" || s === "closed"
+}
+
+function formatReservationTimeRange(startIso: string, endIso: string): string {
+  const a = formatReservationTime(startIso)
+  const b = formatReservationTime(endIso)
+  if (a === "—" && b === "—") return "—"
+  return `${a} – ${b}`
+}
+
+/** Una reserva asociada a una mesa para la vista de plano. */
+export interface TableReservationSlot {
+  reservationId: string
+  status: string
+  /** ISO8601 del inicio (para ordenar). */
+  startTimeIso: string
+  timeRangeLabel: string
+  customerLabel: string
+}
+
 function tablesLabelFrom(
   links: AdminReservationTableLinkRaw[] | undefined,
 ): string | null {
@@ -95,6 +118,44 @@ function mapCustomerToLabel(c: AdminCustomerRaw | null | undefined): string {
     phoneNumber: c.phone_number ?? "",
   }
   return orderCustomerLabel(oc)
+}
+
+/**
+ * Agrupa `reservation_table` por `table_id` (solo reservas no terminadas).
+ */
+export function aggregateReservationsByTableId(
+  raws: AdminReservationRaw[],
+): Map<string, TableReservationSlot[]> {
+  const map = new Map<string, TableReservationSlot[]>()
+
+  for (const raw of raws) {
+    if (isAdminReservationTerminated(raw.status)) continue
+    const links = raw.reservation_table ?? []
+    for (const link of links) {
+      const tid = link.table_id
+      if (!tid) continue
+      const slot: TableReservationSlot = {
+        reservationId: raw.id,
+        status: raw.status,
+        startTimeIso: raw.start_time,
+        timeRangeLabel: formatReservationTimeRange(raw.start_time, raw.end_time),
+        customerLabel: mapCustomerToLabel(raw.customer ?? null),
+      }
+      const arr = map.get(tid) ?? []
+      arr.push(slot)
+      map.set(tid, arr)
+    }
+  }
+
+  for (const [tid, arr] of map) {
+    arr.sort(
+      (a, b) =>
+        new Date(a.startTimeIso).getTime() - new Date(b.startTimeIso).getTime(),
+    )
+    map.set(tid, arr)
+  }
+
+  return map
 }
 
 export function mapAdminReservationToReservation(
@@ -141,4 +202,35 @@ export async function fetchAdminReservations(
     },
   )
   return data
+}
+
+function todayLocalISODate(): string {
+  const n = new Date()
+  const y = n.getFullYear()
+  const m = String(n.getMonth() + 1).padStart(2, "0")
+  const d = String(n.getDate()).padStart(2, "0")
+  return `${y}-${m}-${d}`
+}
+
+/** Todas las reservas del día local (paginado en el servidor). */
+export async function fetchTodayReservationRaws(options?: {
+  maxPages?: number
+}): Promise<AdminReservationRaw[]> {
+  const today = todayLocalISODate()
+  const maxPages = options?.maxPages ?? 50
+  let page = 1
+  const all: AdminReservationRaw[] = []
+  for (;;) {
+    const data = await fetchAdminReservations({
+      page,
+      dateFrom: today,
+      dateTo: today,
+      status: ADMIN_RESERVATIONS_STATUS_ALL,
+    })
+    all.push(...data.items)
+    const totalPages = data.totalPages > 0 ? data.totalPages : 1
+    if (page >= totalPages || page >= maxPages) break
+    page += 1
+  }
+  return all
 }
