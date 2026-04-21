@@ -250,6 +250,37 @@ export default function MessagesPage() {
           ? prev
           : Array.from(nextChatsMap.keys())[0] ?? null,
       )
+
+      const conversationIds = Array.from(nextChatsMap.keys())
+      if (conversationIds.length > 0) {
+        const botStatusResults = await Promise.allSettled(
+          conversationIds.map(async (conversationId) => ({
+            conversationId,
+            enabled: await fetchAdminWhatsappConversationBotStatus(conversationId),
+          })),
+        )
+
+        const resolvedStatuses: Record<string, boolean> = {}
+        for (const result of botStatusResults) {
+          if (result.status === "fulfilled") {
+            resolvedStatuses[result.value.conversationId] = result.value.enabled
+          }
+        }
+
+        if (Object.keys(resolvedStatuses).length > 0) {
+          setBotEnabledByConversation((prev) => ({
+            ...prev,
+            ...resolvedStatuses,
+          }))
+          setChats((prev) =>
+            prev.map((chat) =>
+              Object.prototype.hasOwnProperty.call(resolvedStatuses, chat.id)
+                ? { ...chat, botEnabled: resolvedStatuses[chat.id] }
+                : chat,
+            ),
+          )
+        }
+      }
     } catch (e) {
       if (isAxiosError(e)) {
         const msg = (e.response?.data as { message?: string })?.message ?? e.message
@@ -323,9 +354,6 @@ export default function MessagesPage() {
 
   useEffect(() => {
     if (!selectedChatId) return
-    if (Object.prototype.hasOwnProperty.call(botEnabledByConversation, selectedChatId)) {
-      return
-    }
     void (async () => {
       try {
         const enabled = await fetchAdminWhatsappConversationBotStatus(
@@ -344,7 +372,7 @@ export default function MessagesPage() {
         /* noop */
       }
     })()
-  }, [selectedChatId, botEnabledByConversation])
+  }, [selectedChatId])
 
   const handleSelectChat = useCallback((chatId: string) => {
     setSelectedChatId(chatId)
