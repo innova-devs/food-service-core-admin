@@ -3,9 +3,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { isAxiosError } from "axios"
-import { ShoppingCart, CalendarDays, ArrowRight, RefreshCw } from "lucide-react"
+import {
+  ShoppingCart,
+  CalendarDays,
+  ArrowRight,
+  RefreshCw,
+  TrendingUp,
+  DollarSign,
+  Users,
+  Star,
+} from "lucide-react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -18,6 +28,15 @@ import {
   fetchAdminDashboardSummary,
   type AdminDashboardSummary,
 } from "@/lib/requests/dashboard"
+import {
+  fetchOrderVolume,
+  fetchClientRanking,
+  fetchTopDishes,
+  lastNDaysRange,
+  type ClientRankingEntry,
+  type TopDishEntry,
+} from "@/lib/requests/analytics"
+import { AnalyticsTabs } from "@/components/dashboard/analytics-tabs"
 
 /** Fecha local `YYYY-MM-DD` (alineado a “hoy” en el navegador). */
 function todayISOInLocal(): string {
@@ -151,10 +170,56 @@ function BreakdownBlock({
   )
 }
 
+interface AnalyticsKPIs {
+  units: number
+  revenue: number
+  topClient: ClientRankingEntry | null
+  topDish: TopDishEntry | null
+}
+
+function formatARS(v: number): string {
+  return new Intl.NumberFormat("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    maximumFractionDigits: 0,
+  }).format(v)
+}
+
+function clientDisplayName(c: ClientRankingEntry): string {
+  return c.name?.trim() || c.phone || c.customerId.slice(0, 8)
+}
+
 export default function DashboardPage() {
   const [data, setData] = useState<AdminDashboardSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const [analyticsKPIs, setAnalyticsKPIs] = useState<AnalyticsKPIs | null>(null)
+  const [analyticsLoading, setAnalyticsLoading] = useState(true)
+
+  const loadAnalyticsKPIs = useCallback(async () => {
+    setAnalyticsLoading(true)
+    try {
+      const { from, to } = lastNDaysRange(30)
+      const [volumeRes, clientRes, dishRes] = await Promise.all([
+        fetchOrderVolume({ from, to }),
+        fetchClientRanking({ from, to, limit: 1 }),
+        fetchTopDishes({ from, to, limit: 1 }),
+      ])
+      const units   = volumeRes.data.reduce((s, d) => s + d.units, 0)
+      const revenue = volumeRes.data.reduce((s, d) => s + d.revenue, 0)
+      setAnalyticsKPIs({
+        units,
+        revenue,
+        topClient: clientRes.data[0] ?? null,
+        topDish:   dishRes.data[0]   ?? null,
+      })
+    } catch {
+      setAnalyticsKPIs(null)
+    } finally {
+      setAnalyticsLoading(false)
+    }
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -186,7 +251,8 @@ export default function DashboardPage() {
 
   useEffect(() => {
     void load()
-  }, [load])
+    void loadAnalyticsKPIs()
+  }, [load, loadAnalyticsKPIs])
 
   const orderStatusEntries = useMemo(() => {
     if (!data) return []
@@ -334,6 +400,138 @@ export default function DashboardPage() {
         </Card>
       </div>
 
+      {/* Analytics KPI cards — últimos 30 días */}
+      <div className="space-y-2">
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Últimos 30 días
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
+              <div className="space-y-1">
+                <CardTitle className="text-base leading-tight">
+                  Volumen de pedidos
+                </CardTitle>
+                <CardDescription className="text-xs leading-snug">
+                  Total de unidades en el período
+                </CardDescription>
+              </div>
+              <TrendingUp className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              {analyticsLoading ? (
+                <>
+                  <Skeleton className="h-9 w-24" />
+                  <Skeleton className="mt-2 h-4 w-32" />
+                </>
+              ) : (
+                <>
+                  <div className="text-2xl font-bold tabular-nums">
+                    {analyticsKPIs?.units ?? "—"}
+                  </div>
+                  <p className="text-xs text-muted-foreground">pedidos registrados</p>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
+              <div className="space-y-1">
+                <CardTitle className="text-base leading-tight">
+                  Ingresos totales
+                </CardTitle>
+                <CardDescription className="text-xs leading-snug">
+                  Suma de facturación en el período
+                </CardDescription>
+              </div>
+              <DollarSign className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              {analyticsLoading ? (
+                <>
+                  <Skeleton className="h-9 w-24" />
+                  <Skeleton className="mt-2 h-4 w-28" />
+                </>
+              ) : (
+                <>
+                  <div className="text-2xl font-bold tabular-nums">
+                    {analyticsKPIs != null ? formatARS(analyticsKPIs.revenue) : "—"}
+                  </div>
+                  <p className="text-xs text-muted-foreground">en 30 días</p>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
+              <div className="space-y-1">
+                <CardTitle className="text-base leading-tight">
+                  Cliente frecuente
+                </CardTitle>
+                <CardDescription className="text-xs leading-snug">
+                  Mayor cantidad de pedidos
+                </CardDescription>
+              </div>
+              <Users className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              {analyticsLoading ? (
+                <>
+                  <Skeleton className="h-9 w-36" />
+                  <Skeleton className="mt-2 h-4 w-40" />
+                </>
+              ) : analyticsKPIs?.topClient ? (
+                <>
+                  <div className="truncate text-2xl font-bold">
+                    {clientDisplayName(analyticsKPIs.topClient)}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {analyticsKPIs.topClient.orderCount} pedidos en el período
+                  </p>
+                </>
+              ) : (
+                <div className="text-2xl font-bold">—</div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
+              <div className="space-y-1">
+                <CardTitle className="text-base leading-tight">
+                  Plato estrella
+                </CardTitle>
+                <CardDescription className="text-xs leading-snug">
+                  El más pedido del período
+                </CardDescription>
+              </div>
+              <Star className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              {analyticsLoading ? (
+                <>
+                  <Skeleton className="h-9 w-36" />
+                  <Skeleton className="mt-2 h-4 w-32" />
+                </>
+              ) : analyticsKPIs?.topDish ? (
+                <>
+                  <div className="truncate text-2xl font-bold">
+                    {analyticsKPIs.topDish.name}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {analyticsKPIs.topDish.orderCount} veces pedido
+                  </p>
+                </>
+              ) : (
+                <div className="text-2xl font-bold">—</div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
       {!loading && data ? (
         <div className="grid gap-4 lg:grid-cols-3">
           <Card>
@@ -389,6 +587,8 @@ export default function DashboardPage() {
           ))}
         </div>
       ) : null}
+
+      <AnalyticsTabs />
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
