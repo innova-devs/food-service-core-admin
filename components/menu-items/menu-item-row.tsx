@@ -6,7 +6,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { TableCell, TableRow } from "@/components/ui/table"
-import type { MenuItem } from "./types"
+import { formatMenuCategoryTag, type MenuItem } from "./types"
 
 interface MenuItemRowProps {
   item: MenuItem
@@ -38,7 +38,7 @@ export function MenuItemRow({
         </div>
       </TableCell>
       <TableCell className="text-muted-foreground">
-        {item.menuCategoryTag ?? "—"}
+        {formatMenuCategoryTag(item.menuCategoryTag)}
       </TableCell>
       <TableCell className="text-muted-foreground">
         {item.menuCategoryName ?? "—"}
