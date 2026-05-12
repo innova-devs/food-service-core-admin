@@ -58,8 +58,7 @@ export default function MenuItemsPage() {
     try {
       const [itemsData, categoriesData, tagOptionsData] = await Promise.all([
         fetchAdminMenuItems({
-          page: 1,
-          pageSize: 100,
+          all: true,
           includeUnavailable: true,
         }),
         fetchAdminMenuCategoriesOptions(),

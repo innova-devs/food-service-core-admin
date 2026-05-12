@@ -7,6 +7,8 @@ export const ADMIN_MENU_CATEGORY_TAGS_OPTIONS_PATH =
   "/admin/menu-category-tags/options"
 
 export interface FetchAdminMenuItemsParams {
+  /** Si es `true`, envía `all=true` y omite paginación en la API. */
+  all?: boolean
   page?: number
   pageSize?: number
   categoryId?: string
@@ -193,30 +195,45 @@ function mapAdminMenuItem(raw: AdminMenuItemRaw): MenuItem {
 export async function fetchAdminMenuItems(
   params: FetchAdminMenuItemsParams = {},
 ): Promise<AdminMenuItemsListResponse> {
+  const useAll = params.all === true
   const page = params.page ?? 1
   const pageSize = Math.min(params.pageSize ?? 20, 100)
+
+  const common = {
+    ...(params.categoryId?.trim()
+      ? { categoryId: params.categoryId.trim() }
+      : {}),
+    ...(params.q?.trim() ? { q: params.q.trim() } : {}),
+    ...(typeof params.includeUnavailable === "boolean"
+      ? { includeUnavailable: params.includeUnavailable }
+      : {}),
+  }
+
   const { data } = await api.get<AdminMenuItemsListResponseRaw>(
     ADMIN_MENU_ITEMS_PATH,
     {
-      params: {
-        page,
-        pageSize,
-        ...(params.categoryId?.trim()
-          ? { categoryId: params.categoryId.trim() }
-          : {}),
-        ...(params.q?.trim() ? { q: params.q.trim() } : {}),
-        ...(typeof params.includeUnavailable === "boolean"
-          ? { includeUnavailable: params.includeUnavailable }
-          : {}),
-      },
+      params: useAll
+        ? { all: true, ...common }
+        : { page, pageSize, ...common },
     },
   )
 
+  const items = Array.isArray(data.items) ? data.items.map(mapAdminMenuItem) : []
+  const resolvedTotal = Number.isFinite(data.total)
+    ? Number(data.total)
+    : useAll
+      ? items.length
+      : 0
+
   return {
-    items: Array.isArray(data.items) ? data.items.map(mapAdminMenuItem) : [],
-    total: Number.isFinite(data.total) ? Number(data.total) : 0,
+    items,
+    total: resolvedTotal,
     page: Number.isFinite(data.page) ? Number(data.page) : page,
-    pageSize: Number.isFinite(data.pageSize) ? Number(data.pageSize) : pageSize,
+    pageSize: Number.isFinite(data.pageSize)
+      ? Number(data.pageSize)
+      : useAll
+        ? items.length
+        : pageSize,
     totalPages: Number.isFinite(data.totalPages) ? Number(data.totalPages) : 0,
   }
 }

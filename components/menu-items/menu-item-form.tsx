@@ -89,8 +89,7 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
       try {
         const [itemsData, item] = await Promise.all([
           fetchAdminMenuItems({
-            page: 1,
-            pageSize: 100,
+            all: true,
             includeUnavailable: true,
           }),
           mode === "edit" && itemId
