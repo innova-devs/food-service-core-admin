@@ -37,6 +37,7 @@ import {
   type TopDishEntry,
 } from "@/lib/requests/analytics"
 import { AnalyticsTabs } from "@/components/dashboard/analytics-tabs"
+import { ClientRankingIdentityLines } from "@/components/dashboard/client-ranking-identity-lines"
 
 /** Fecha local `YYYY-MM-DD` (alineado a “hoy” en el navegador). */
 function todayISOInLocal(): string {
@@ -183,10 +184,6 @@ function formatARS(v: number): string {
     currency: "ARS",
     maximumFractionDigits: 0,
   }).format(v)
-}
-
-function clientDisplayName(c: ClientRankingEntry): string {
-  return c.name?.trim() || c.phone || c.customerId.slice(0, 8)
 }
 
 export default function DashboardPage() {
@@ -483,14 +480,15 @@ export default function DashboardPage() {
                   <Skeleton className="mt-2 h-4 w-40" />
                 </>
               ) : analyticsKPIs?.topClient ? (
-                <>
-                  <div className="truncate text-2xl font-bold">
-                    {clientDisplayName(analyticsKPIs.topClient)}
-                  </div>
+                <div className="space-y-1">
+                  <ClientRankingIdentityLines
+                    entry={analyticsKPIs.topClient}
+                    primaryClassName="text-2xl font-bold"
+                  />
                   <p className="text-xs text-muted-foreground">
                     {analyticsKPIs.topClient.orderCount} pedidos en el período
                   </p>
-                </>
+                </div>
               ) : (
                 <div className="text-2xl font-bold">—</div>
               )}

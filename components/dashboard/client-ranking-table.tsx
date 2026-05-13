@@ -25,6 +25,7 @@ import {
   fetchClientRanking,
   type ClientRankingEntry,
 } from "@/lib/requests/analytics"
+import { ClientRankingIdentityLines } from "@/components/dashboard/client-ranking-identity-lines"
 
 function firstDayOfMonth(): string {
   const now = new Date()
@@ -50,10 +51,6 @@ function formatDate(iso: string): string {
   if (!iso) return "—"
   const parts = iso.split("-")
   return `${parseInt(parts[2], 10)}/${parseInt(parts[1], 10)}/${parts[0]}`
-}
-
-function clientDisplayName(entry: ClientRankingEntry): string {
-  return entry.name?.trim() || entry.phone || entry.customerId.slice(0, 8)
 }
 
 function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
@@ -196,15 +193,18 @@ export function ClientRankingTable() {
                       {index + 1}
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2">
+                      <div className="flex min-w-0 items-start gap-2">
                         {index === 0 && (
                           <Badge className="h-5 shrink-0 px-1.5 py-0 text-xs">
                             Top
                           </Badge>
                         )}
-                        <span className="text-sm font-medium">
-                          {clientDisplayName(client)}
-                        </span>
+                        <div className="min-w-0 flex-1">
+                          <ClientRankingIdentityLines
+                            entry={client}
+                            primaryClassName="text-sm font-medium"
+                          />
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell className="tabular-nums text-sm">
