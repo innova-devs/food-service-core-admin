@@ -13,6 +13,7 @@ import {
   Trash2,
   Loader2,
   CalendarClock,
+  Pencil,
 } from "lucide-react"
 
 import { useAdminSocket } from "@/contexts/admin-socket-context"
@@ -50,7 +51,9 @@ import {
 } from "@/lib/requests/admin-tables"
 import {
   createAdminEnvironment,
+  fetchAdminEnvironmentById,
   fetchAdminEnvironments,
+  patchAdminEnvironment,
   type AdminEnvironment,
 } from "@/lib/requests/admin-environments"
 import {
@@ -153,15 +156,21 @@ export default function TablesPage() {
   const [creatingTable, setCreatingTable] = useState(false)
 
   const [environments, setEnvironments] = useState<AdminEnvironment[]>([])
-  const [createEnvironmentOpen, setCreateEnvironmentOpen] = useState(false)
-  const [createEnvironmentForm, setCreateEnvironmentForm] = useState<CreateEnvironmentForm>(
+  const [environmentDialogOpen, setEnvironmentDialogOpen] = useState(false)
+  const [environmentDialogMode, setEnvironmentDialogMode] = useState<"create" | "edit">(
+    "create",
+  )
+  const [editingEnvironmentId, setEditingEnvironmentId] = useState<string | null>(null)
+  const [environmentForm, setEnvironmentForm] = useState<CreateEnvironmentForm>(
     DEFAULT_CREATE_ENVIRONMENT_FORM,
   )
-  const [createEnvironmentErrors, setCreateEnvironmentErrors] = useState<{
+  const [environmentFormErrors, setEnvironmentFormErrors] = useState<{
     name?: string
     description?: string
   }>({})
-  const [creatingEnvironment, setCreatingEnvironment] = useState(false)
+  const [savingEnvironment, setSavingEnvironment] = useState(false)
+  const [environmentDetailLoading, setEnvironmentDetailLoading] = useState(false)
+  const [environmentDetailError, setEnvironmentDetailError] = useState<string | null>(null)
 
   const environmentOptions = useMemo(() => {
     const byId = new Map<string, string>()
@@ -191,6 +200,11 @@ export default function TablesPage() {
     }
     return environmentOptions[0].id
   }, [environmentOptions, selectedEnvironmentId])
+
+  const activeEnvironmentName = useMemo(() => {
+    if (!activeEnvironmentId) return ""
+    return environmentOptions.find((e) => e.id === activeEnvironmentId)?.name ?? ""
+  }, [environmentOptions, activeEnvironmentId])
 
   const loadReservationsMap = useCallback(async () => {
     setReservationsLoading(true)
@@ -344,53 +358,125 @@ export default function TablesPage() {
     setCreateTableOpen(true)
   }, [activeEnvironmentId, environmentOptions])
 
-  const openCreateEnvironment = useCallback(() => {
-    setCreateEnvironmentForm(DEFAULT_CREATE_ENVIRONMENT_FORM)
-    setCreateEnvironmentErrors({})
-    setCreateEnvironmentOpen(true)
+  const handleEnvironmentDialogOpenChange = useCallback((open: boolean) => {
+    setEnvironmentDialogOpen(open)
+    if (!open) {
+      setEditingEnvironmentId(null)
+      setEnvironmentDetailError(null)
+      setEnvironmentDetailLoading(false)
+      setEnvironmentFormErrors({})
+    }
   }, [])
 
-  const handleCreateEnvironmentSubmit = useCallback(async () => {
+  const loadEnvironmentDetail = useCallback(async (id: string) => {
+    setEnvironmentDetailLoading(true)
+    setEnvironmentDetailError(null)
+    setEnvironmentForm(DEFAULT_CREATE_ENVIRONMENT_FORM)
+    try {
+      const env = await fetchAdminEnvironmentById(id)
+      setEnvironmentForm({
+        name: env.name,
+        description: env.description ?? "",
+        isOutdoor: env.isOutdoor,
+        isActive: env.isActive,
+      })
+    } catch (e) {
+      const msg = apiErrorMessage(e, "No se pudo recuperar la información del ambiente.")
+      setEnvironmentDetailError(msg)
+      toast.error("No se pudo cargar el ambiente", {
+        description: msg,
+      })
+    } finally {
+      setEnvironmentDetailLoading(false)
+    }
+  }, [])
+
+  const openCreateEnvironment = useCallback(() => {
+    setEnvironmentDialogMode("create")
+    setEditingEnvironmentId(null)
+    setEnvironmentDetailError(null)
+    setEnvironmentDetailLoading(false)
+    setEnvironmentForm(DEFAULT_CREATE_ENVIRONMENT_FORM)
+    setEnvironmentFormErrors({})
+    setEnvironmentDialogOpen(true)
+  }, [])
+
+  const openEditEnvironment = useCallback(() => {
+    if (!activeEnvironmentId) return
+    setEnvironmentDialogMode("edit")
+    setEditingEnvironmentId(activeEnvironmentId)
+    setEnvironmentFormErrors({})
+    setEnvironmentDialogOpen(true)
+    void loadEnvironmentDetail(activeEnvironmentId)
+  }, [activeEnvironmentId, loadEnvironmentDetail])
+
+  const handleEnvironmentSubmit = useCallback(async () => {
     const errors: { name?: string; description?: string } = {}
-    const nameTrim = createEnvironmentForm.name.trim()
+    const nameTrim = environmentForm.name.trim()
     if (!nameTrim) {
       errors.name = "El nombre es obligatorio."
     } else if (nameTrim.length > ENV_NAME_MAX_LENGTH) {
       errors.name = `El nombre no puede superar ${ENV_NAME_MAX_LENGTH} caracteres.`
     }
 
-    const descTrim = createEnvironmentForm.description.trim()
-    if (createEnvironmentForm.description.length > ENV_DESCRIPTION_MAX_LENGTH) {
+    const descTrim = environmentForm.description.trim()
+    if (!descTrim) {
+      errors.description = "La descripción es obligatoria."
+    } else if (environmentForm.description.length > ENV_DESCRIPTION_MAX_LENGTH) {
       errors.description = `La descripción no puede superar ${ENV_DESCRIPTION_MAX_LENGTH} caracteres.`
     }
 
     if (Object.keys(errors).length > 0) {
-      setCreateEnvironmentErrors(errors)
+      setEnvironmentFormErrors(errors)
       return
     }
 
-    setCreatingEnvironment(true)
+    setSavingEnvironment(true)
     try {
-      const created = await createAdminEnvironment({
-        name: nameTrim,
-        description: descTrim === "" ? null : descTrim,
-        isOutdoor: createEnvironmentForm.isOutdoor,
-        isActive: createEnvironmentForm.isActive,
-      })
-      setEnvironments((prev) =>
-        [...prev, created].sort((a, b) => a.name.localeCompare(b.name, "es")),
-      )
-      setSelectedEnvironmentId(created.id)
-      setCreateEnvironmentOpen(false)
-      toast.success("Ambiente creado", { description: created.name })
+      if (environmentDialogMode === "create") {
+        const created = await createAdminEnvironment({
+          name: nameTrim,
+          description: descTrim,
+          isOutdoor: environmentForm.isOutdoor,
+          isActive: environmentForm.isActive,
+        })
+        setEnvironments((prev) =>
+          [...prev, created].sort((a, b) => a.name.localeCompare(b.name, "es")),
+        )
+        setSelectedEnvironmentId(created.id)
+        setEnvironmentDialogOpen(false)
+        toast.success("Ambiente creado", { description: created.name })
+      } else if (editingEnvironmentId) {
+        const updated = await patchAdminEnvironment(editingEnvironmentId, {
+          name: nameTrim,
+          description: descTrim,
+          isOutdoor: environmentForm.isOutdoor,
+          isActive: environmentForm.isActive,
+        })
+        setEnvironments((prev) =>
+          prev
+            .map((e) => (e.id === updated.id ? updated : e))
+            .sort((a, b) => a.name.localeCompare(b.name, "es")),
+        )
+        setTables((prev) =>
+          prev.map((t) =>
+            t.environmentId === updated.id
+              ? { ...t, environmentName: updated.name }
+              : t,
+          ),
+        )
+        setEnvironmentDialogOpen(false)
+        toast.success("Ambiente actualizado", { description: updated.name })
+      }
     } catch (e) {
-      toast.error("No se pudo crear el ambiente", {
+      const isEdit = environmentDialogMode === "edit"
+      toast.error(isEdit ? "No se pudo actualizar el ambiente" : "No se pudo crear el ambiente", {
         description: apiErrorMessage(e, "Intentá de nuevo en unos segundos."),
       })
     } finally {
-      setCreatingEnvironment(false)
+      setSavingEnvironment(false)
     }
-  }, [createEnvironmentForm])
+  }, [environmentDialogMode, editingEnvironmentId, environmentForm])
 
   const handleCreateTableSubmit = useCallback(async () => {
     const errors: { environmentId?: string; name?: string; capacity?: string } = {}
@@ -694,109 +780,161 @@ export default function TablesPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={createEnvironmentOpen} onOpenChange={setCreateEnvironmentOpen}>
+      <Dialog open={environmentDialogOpen} onOpenChange={handleEnvironmentDialogOpenChange}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Nuevo ambiente</DialogTitle>
+            <DialogTitle>
+              {environmentDialogMode === "edit" ? "Editar ambiente" : "Nuevo ambiente"}
+            </DialogTitle>
             <DialogDescription>
-              Definí el nombre y los datos del espacio. Podés agregar mesas en el plano cuando
-              termine la creación.
+              {environmentDialogMode === "edit"
+                ? "Modificá el nombre y los datos del espacio. Los cambios se aplican a todas las mesas de este ambiente."
+                : "Definí el nombre y los datos del espacio. Podés agregar mesas en el plano cuando termine la creación."}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="new-env-name">Nombre *</Label>
-              <Input
-                id="new-env-name"
-                value={createEnvironmentForm.name}
-                maxLength={ENV_NAME_MAX_LENGTH}
-                onChange={(e) => {
-                  setCreateEnvironmentForm((f) => ({ ...f, name: e.target.value }))
-                  if (createEnvironmentErrors.name) {
-                    setCreateEnvironmentErrors((er) => ({ ...er, name: undefined }))
-                  }
-                }}
-                placeholder="Ej: Salón principal"
-                disabled={creatingEnvironment}
-              />
-              <p className="text-xs text-muted-foreground">
-                Obligatorio, entre 1 y {ENV_NAME_MAX_LENGTH} caracteres.
-              </p>
-              {createEnvironmentErrors.name ? (
-                <p className="text-sm text-destructive">{createEnvironmentErrors.name}</p>
-              ) : null}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="new-env-description">Descripción</Label>
-              <Textarea
-                id="new-env-description"
-                value={createEnvironmentForm.description}
-                maxLength={ENV_DESCRIPTION_MAX_LENGTH}
-                rows={3}
-                onChange={(e) => {
-                  setCreateEnvironmentForm((f) => ({ ...f, description: e.target.value }))
-                  if (createEnvironmentErrors.description) {
-                    setCreateEnvironmentErrors((er) => ({ ...er, description: undefined }))
-                  }
-                }}
-                placeholder="Opcional"
-                disabled={creatingEnvironment}
-                className="min-h-[80px] resize-y"
-              />
-              <p className="text-xs text-muted-foreground">
-                Opcional, hasta {ENV_DESCRIPTION_MAX_LENGTH} caracteres.
-              </p>
-              {createEnvironmentErrors.description ? (
-                <p className="text-sm text-destructive">{createEnvironmentErrors.description}</p>
-              ) : null}
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="new-env-outdoor"
-                checked={createEnvironmentForm.isOutdoor}
-                onCheckedChange={(v) =>
-                  setCreateEnvironmentForm((f) => ({ ...f, isOutdoor: v === true }))
+          {environmentDialogMode === "edit" && environmentDetailError ? (
+            <div
+              role="alert"
+              className="flex flex-col gap-3 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-4 text-sm text-destructive"
+            >
+              <p className="font-medium">No se pudo recuperar la información</p>
+              <p className="text-pretty">{environmentDetailError}</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-fit"
+                onClick={() =>
+                  editingEnvironmentId
+                    ? void loadEnvironmentDetail(editingEnvironmentId)
+                    : undefined
                 }
-                disabled={creatingEnvironment}
-              />
-              <Label htmlFor="new-env-outdoor" className="text-sm font-normal leading-none">
-                Ambiente al aire libre
-              </Label>
+              >
+                Reintentar
+              </Button>
             </div>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="new-env-active"
-                checked={createEnvironmentForm.isActive}
-                onCheckedChange={(v) =>
-                  setCreateEnvironmentForm((f) => ({ ...f, isActive: v === true }))
-                }
-                disabled={creatingEnvironment}
-              />
-              <Label htmlFor="new-env-active" className="text-sm font-normal leading-none">
-                Ambiente activo
-              </Label>
+          ) : environmentDialogMode === "edit" && environmentDetailLoading ? (
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-3 w-48" />
+              </div>
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-20 w-full" />
+              </div>
+              <Skeleton className="h-5 w-40" />
+              <Skeleton className="h-5 w-36" />
             </div>
-          </div>
+          ) : (
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label htmlFor="new-env-name">Nombre *</Label>
+                <Input
+                  id="new-env-name"
+                  value={environmentForm.name}
+                  maxLength={ENV_NAME_MAX_LENGTH}
+                  onChange={(e) => {
+                    setEnvironmentForm((f) => ({ ...f, name: e.target.value }))
+                    if (environmentFormErrors.name) {
+                      setEnvironmentFormErrors((er) => ({ ...er, name: undefined }))
+                    }
+                  }}
+                  placeholder="Ej: Salón principal"
+                  disabled={savingEnvironment}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Obligatorio, entre 1 y {ENV_NAME_MAX_LENGTH} caracteres.
+                </p>
+                {environmentFormErrors.name ? (
+                  <p className="text-sm text-destructive">{environmentFormErrors.name}</p>
+                ) : null}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-env-description">Descripción *</Label>
+                <Textarea
+                  id="new-env-description"
+                  value={environmentForm.description}
+                  maxLength={ENV_DESCRIPTION_MAX_LENGTH}
+                  rows={3}
+                  onChange={(e) => {
+                    setEnvironmentForm((f) => ({ ...f, description: e.target.value }))
+                    if (environmentFormErrors.description) {
+                      setEnvironmentFormErrors((er) => ({ ...er, description: undefined }))
+                    }
+                  }}
+                  placeholder="Ej: Planta baja"
+                  disabled={savingEnvironment}
+                  className="min-h-[80px] resize-y"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Obligatoria, entre 1 y {ENV_DESCRIPTION_MAX_LENGTH} caracteres.
+                </p>
+                {environmentFormErrors.description ? (
+                  <p className="text-sm text-destructive">{environmentFormErrors.description}</p>
+                ) : null}
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="new-env-outdoor"
+                  checked={environmentForm.isOutdoor}
+                  onCheckedChange={(v) =>
+                    setEnvironmentForm((f) => ({ ...f, isOutdoor: v === true }))
+                  }
+                  disabled={savingEnvironment}
+                />
+                <Label htmlFor="new-env-outdoor" className="text-sm font-normal leading-none">
+                  Ambiente al aire libre
+                </Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="new-env-active"
+                  checked={environmentForm.isActive}
+                  onCheckedChange={(v) =>
+                    setEnvironmentForm((f) => ({ ...f, isActive: v === true }))
+                  }
+                  disabled={savingEnvironment}
+                />
+                <Label htmlFor="new-env-active" className="text-sm font-normal leading-none">
+                  Ambiente activo
+                </Label>
+              </div>
+            </div>
+          )}
           <DialogFooter>
             <Button
               type="button"
               variant="outline"
-              onClick={() => setCreateEnvironmentOpen(false)}
-              disabled={creatingEnvironment}
+              onClick={() => handleEnvironmentDialogOpenChange(false)}
+              disabled={savingEnvironment}
             >
               Cancelar
             </Button>
             <Button
               type="button"
-              onClick={() => void handleCreateEnvironmentSubmit()}
-              disabled={creatingEnvironment}
+              onClick={() => void handleEnvironmentSubmit()}
+              disabled={
+                savingEnvironment ||
+                (environmentDialogMode === "edit" &&
+                  (environmentDetailLoading || Boolean(environmentDetailError)))
+              }
             >
-              {creatingEnvironment ? (
+              {savingEnvironment ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : environmentDialogMode === "edit" ? (
+                <Save className="mr-2 h-4 w-4" />
               ) : (
                 <Plus className="mr-2 h-4 w-4" />
               )}
-              {creatingEnvironment ? "Creando…" : "Crear ambiente"}
+              {savingEnvironment
+                ? environmentDialogMode === "edit"
+                  ? "Guardando…"
+                  : "Creando…"
+                : environmentDialogMode === "edit"
+                  ? "Guardar cambios"
+                  : "Crear ambiente"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -902,6 +1040,24 @@ export default function TablesPage() {
                   ))}
                 </SelectContent>
               </Select>
+              {activeEnvironmentId ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={openEditEnvironment}
+                  disabled={
+                    savingLayout ||
+                    savingProperties ||
+                    deletingTable ||
+                    savingEnvironment ||
+                    environmentDetailLoading
+                  }
+                >
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Editar ambiente ({activeEnvironmentName})
+                </Button>
+              ) : null}
             </>
           ) : null}
           <Button
@@ -910,7 +1066,7 @@ export default function TablesPage() {
             size="sm"
             onClick={openCreateEnvironment}
             disabled={
-              savingLayout || savingProperties || deletingTable || creatingEnvironment
+              savingLayout || savingProperties || deletingTable || savingEnvironment
             }
           >
             <Plus className="mr-2 h-4 w-4" />

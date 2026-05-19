@@ -23,6 +23,13 @@ export interface CreateAdminEnvironmentInput {
   isActive?: boolean
 }
 
+export interface PatchAdminEnvironmentInput {
+  name: string
+  description?: string | null
+  isOutdoor: boolean
+  isActive: boolean
+}
+
 function mapEnvironment(raw: Record<string, unknown>): AdminEnvironment {
   return {
     id: String(raw.id ?? ""),
@@ -49,6 +56,13 @@ export async function fetchAdminEnvironments(): Promise<AdminEnvironment[]> {
   return items.map((row) => mapEnvironment(row as Record<string, unknown>))
 }
 
+export async function fetchAdminEnvironmentById(id: string): Promise<AdminEnvironment> {
+  const { data } = await api.get(
+    `${ADMIN_ENVIRONMENTS_PATH}/${encodeURIComponent(id)}`,
+  )
+  return mapEnvironment(data as Record<string, unknown>)
+}
+
 export async function createAdminEnvironment(
   input: CreateAdminEnvironmentInput,
 ): Promise<AdminEnvironment> {
@@ -69,5 +83,27 @@ export async function createAdminEnvironment(
     body.description = t === "" ? null : t
   }
   const { data } = await api.post(ADMIN_ENVIRONMENTS_PATH, body)
+  return mapEnvironment(data as Record<string, unknown>)
+}
+
+export async function patchAdminEnvironment(
+  id: string,
+  input: PatchAdminEnvironmentInput,
+): Promise<AdminEnvironment> {
+  const name = input.name.trim()
+  const body: PatchAdminEnvironmentInput = {
+    name,
+    description: null,
+    isOutdoor: input.isOutdoor,
+    isActive: input.isActive,
+  }
+  if (input.description != null) {
+    const t = String(input.description).trim()
+    body.description = t === "" ? null : t
+  }
+  const { data } = await api.patch(
+    `${ADMIN_ENVIRONMENTS_PATH}/${encodeURIComponent(id)}`,
+    body,
+  )
   return mapEnvironment(data as Record<string, unknown>)
 }
