@@ -146,11 +146,6 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
 
     if (!formData.categoryId) {
       newErrors.categoryId = "Selecciona una categoría"
-    } else {
-      const selectedCategory = categories.find((c) => c.id === formData.categoryId)
-      if (!selectedCategory?.tag?.trim()) {
-        newErrors.categoryId = "La categoría seleccionada no tiene sección asignada"
-      }
     }
 
     const priceValue = formData.price.trim().replace(",", ".")
@@ -178,16 +173,12 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
     setIsSaving(true)
 
     try {
-      const selectedCategory = categories.find((c) => c.id === formData.categoryId)
-      const categoryTag = selectedCategory?.tag?.trim().toUpperCase() ?? null
       const priceValue = Number(formData.price.trim().replace(",", "."))
 
       const payload = {
         name: formData.name.trim(),
         description: formData.description.trim() || null,
         categoryId: formData.categoryId,
-        categoryTag,
-        sectionId: categoryTag,
         isAvailable: formData.available,
         isFeatured: formData.featured,
         servesPeople: formData.servesPeople.trim()
