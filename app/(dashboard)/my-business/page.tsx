@@ -351,6 +351,7 @@ export default function MyBusinessPage() {
             value={form.timezone}
             onChange={(e) => updateForm("timezone", e.target.value)}
             placeholder="America/Argentina/Buenos_Aires"
+            disabled
           />
         </div>
       </SettingsSection>
