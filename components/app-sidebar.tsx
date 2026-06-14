@@ -17,6 +17,7 @@ import {
   Armchair,
   Clock3,
   Building2,
+  CreditCard,
 } from "lucide-react"
 
 import {
@@ -102,6 +103,12 @@ const navItems: {
     title: "Zonas de entrega",
     href: "/delivery-zones",
     icon: MapPin,
+    allowedRoles: ["ADMIN", "OWNER"],
+  },
+  {
+    title: "Pagos online",
+    href: "/online-payments",
+    icon: CreditCard,
     allowedRoles: ["ADMIN", "OWNER"],
   },
   {

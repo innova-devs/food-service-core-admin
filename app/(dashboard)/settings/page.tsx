@@ -195,6 +195,16 @@ export default function SettingsPage() {
             checked={settings.bot_enabled}
             onCheckedChange={(checked) => updateSetting("bot_enabled", checked)}
           />
+          <ToggleField
+            id="humanize-messages"
+            label="Humanizar mensajes"
+            description="Hacer que las respuestas del bot suenen más naturales y conversacionales"
+            checked={settings.humanize_messages}
+            onCheckedChange={(checked) =>
+              updateSetting("humanize_messages", checked)
+            }
+            disabled={!settings.bot_enabled}
+          />
         </SettingsSection>
 
         {/* Human Handoff */}
@@ -384,6 +394,35 @@ export default function SettingsPage() {
               disabled={!settings.takeaway_enabled}
             />
           </div>
+        </SettingsSection>
+
+        <SettingsSection
+          title="Fuera de horario"
+          description="Comportamiento del bot y pedidos cuando el local está cerrado"
+        >
+          <ToggleField
+            id="operate-when-closed"
+            label="Operar fuera de horario"
+            description="Permitir que el bot atienda conversaciones aunque el local esté cerrado"
+            checked={settings.operate_when_closed}
+            onCheckedChange={(checked) => {
+              updateSetting("operate_when_closed", checked)
+              if (!checked && settings.orders_when_closed) {
+                updateSetting("orders_when_closed", false)
+              }
+            }}
+            disabled={!settings.bot_enabled}
+          />
+          <ToggleField
+            id="orders-when-closed"
+            label="Aceptar pedidos fuera de horario"
+            description="Permitir crear pedidos aunque el local esté cerrado"
+            checked={settings.orders_when_closed}
+            onCheckedChange={(checked) =>
+              updateSetting("orders_when_closed", checked)
+            }
+            disabled={!settings.operate_when_closed}
+          />
         </SettingsSection>
 
         {/* Reservations */}

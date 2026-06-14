@@ -3,6 +3,8 @@
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
+const INTEGER_INPUT_REGEX = /^\d*$/
+
 interface NumberInputFieldProps {
   id: string
   label: string
@@ -30,9 +32,24 @@ export function NumberInputField({
       onChange(null)
       return
     }
+    if (!INTEGER_INPUT_REGEX.test(val)) return
+
     const num = parseInt(val, 10)
-    if (!isNaN(num) && num >= min) {
+    if (!Number.isNaN(num) && num >= min) {
       onChange(num)
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key.length === 1 && !/^\d$/.test(e.key)) {
+      e.preventDefault()
+    }
+  }
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const pasted = e.clipboardData.getData("text")
+    if (!INTEGER_INPUT_REGEX.test(pasted)) {
+      e.preventDefault()
     }
   }
 
@@ -46,10 +63,13 @@ export function NumberInputField({
       </Label>
       <Input
         id={id}
-        type="number"
-        min={min}
+        type="text"
+        inputMode="numeric"
+        autoComplete="off"
         value={value ?? ""}
         onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
         disabled={disabled}
         placeholder={placeholder}
         className="max-w-[200px]"

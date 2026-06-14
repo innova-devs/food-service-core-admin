@@ -23,6 +23,9 @@ export interface AdminBusinessConfig {
   delivery_enabled: boolean
   takeaway_enabled: boolean
   pickup_instructions: string | null
+  humanize_messages: boolean
+  operate_when_closed: boolean
+  orders_when_closed: boolean
 }
 
 export type AdminBusinessConfigPatch = Partial<AdminBusinessConfig>
@@ -33,6 +36,9 @@ function normalizeAdminBusinessConfig(data: AdminBusinessConfig): AdminBusinessC
     delivery_enabled: data.delivery_enabled ?? true,
     takeaway_enabled: data.takeaway_enabled ?? false,
     pickup_instructions: data.pickup_instructions ?? null,
+    humanize_messages: data.humanize_messages ?? false,
+    operate_when_closed: data.operate_when_closed ?? false,
+    orders_when_closed: data.orders_when_closed ?? false,
   }
 }
 
