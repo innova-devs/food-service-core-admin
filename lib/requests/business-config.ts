@@ -2,6 +2,27 @@ import { api } from "@/lib/api"
 
 export const ADMIN_BUSINESS_CONFIG_PATH = "/admin/config"
 
+export type BotPersonalitySlug = "neutral" | "friendly" | "elegant"
+
+export type BotPersonalitySampleResponse = {
+  question: string
+  response: string
+}
+
+export type BotPersonalityOption = {
+  id: string
+  slug: BotPersonalitySlug
+  name: string
+  description: string
+  sample_responses: BotPersonalitySampleResponse[]
+}
+
+export type BusinessConfigBotPersonalityRef = {
+  id: string
+  slug: string
+  name: string
+} | null
+
 export interface AdminBusinessConfig {
   bot_enabled: boolean
   allow_human_handoff: boolean
@@ -24,6 +45,8 @@ export interface AdminBusinessConfig {
   takeaway_enabled: boolean
   pickup_instructions: string | null
   humanize_messages: boolean
+  bot_personality_id: string
+  bot_personality: BusinessConfigBotPersonalityRef
   operate_when_closed: boolean
   orders_when_closed: boolean
 }
@@ -37,9 +60,18 @@ function normalizeAdminBusinessConfig(data: AdminBusinessConfig): AdminBusinessC
     takeaway_enabled: data.takeaway_enabled ?? false,
     pickup_instructions: data.pickup_instructions ?? null,
     humanize_messages: data.humanize_messages ?? false,
+    bot_personality_id: data.bot_personality_id ?? "",
+    bot_personality: data.bot_personality ?? null,
     operate_when_closed: data.operate_when_closed ?? false,
     orders_when_closed: data.orders_when_closed ?? false,
   }
+}
+
+export async function fetchBotPersonalities(): Promise<BotPersonalityOption[]> {
+  const { data } = await api.get<BotPersonalityOption[]>(
+    `${ADMIN_BUSINESS_CONFIG_PATH}/bot-personalities`,
+  )
+  return data
 }
 
 export async function fetchAdminBusinessConfig(): Promise<AdminBusinessConfig> {

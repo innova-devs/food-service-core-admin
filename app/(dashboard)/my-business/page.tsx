@@ -7,11 +7,15 @@ import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { SettingsSection } from "@/components/settings/settings-section"
+import {
+  BUSINESS_UNSAVED_MESSAGE,
+  SettingsFormFooter,
+} from "@/components/settings/settings-form-footer"
+import { useUnsavedChangesToast } from "@/hooks/use-unsaved-changes-toast"
 import { fetchAdminBusinessConfig } from "@/lib/requests/business-config"
 import {
   fetchAdminBusinessProfile,
@@ -148,6 +152,8 @@ export default function MyBusinessPage() {
     return Object.keys(patch).length > 0
   }, [form, initialProfile])
 
+  useUnsavedChangesToast(isDirty, BUSINESS_UNSAVED_MESSAGE)
+
   const updateForm = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => (prev ? { ...prev, [key]: value } : prev))
   }
@@ -205,7 +211,7 @@ export default function MyBusinessPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 pb-28">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Mi negocio</h1>
         <p className="text-muted-foreground">
@@ -356,15 +362,13 @@ export default function MyBusinessPage() {
         </div>
       </SettingsSection>
 
-      <div className="flex flex-wrap items-center justify-end gap-3 border-t pt-6">
-        <Button type="button" variant="outline" onClick={handleCancel} disabled={saving || !isDirty}>
-          Cancelar
-        </Button>
-        <Button type="button" onClick={() => void handleSave()} disabled={saving || !isDirty}>
-          {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
-          Guardar cambios
-        </Button>
-      </div>
+      <SettingsFormFooter
+        isDirty={isDirty}
+        isSaving={saving}
+        dirtyMessage={BUSINESS_UNSAVED_MESSAGE}
+        onSave={() => void handleSave()}
+        onCancel={handleCancel}
+      />
     </div>
   )
 }

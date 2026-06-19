@@ -338,7 +338,7 @@ export interface Reservation {
   guests: number
   status: ReservationStatus
   /** Mesas y ambiente resumidos desde `reservation_table`. */
-  tablesLabel?: string | null
+  tablesLabels?: string[] | null
   notes?: string | null
 }
 

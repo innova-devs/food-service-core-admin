@@ -17,6 +17,7 @@ import {
 } from "lucide-react"
 
 import { useAdminSocket } from "@/contexts/admin-socket-context"
+import { TablesLayoutFooter, TABLES_LAYOUT_UNSAVED_MESSAGE } from "@/components/tables/tables-layout-footer"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -61,15 +62,11 @@ import {
   fetchTodayReservationRaws,
   type TableReservationSlot,
 } from "@/lib/requests/reservations"
+import { useUnsavedChangesToast } from "@/hooks/use-unsaved-changes-toast"
 
 const statusColors = {
   active: "bg-emerald-500",
   inactive: "bg-gray-400",
-}
-
-const statusLabels = {
-  active: "Activa",
-  inactive: "Inactiva",
 }
 
 function apiErrorMessage(e: unknown, fallback: string): string {
@@ -89,6 +86,76 @@ function apiErrorMessage(e: unknown, fallback: string): string {
     }
   }
   return fallback
+}
+
+type TableLayoutSnapshot = {
+  x: number
+  y: number
+  rotation: number
+  shape: UiTable["shape"]
+  width?: number
+  height?: number
+}
+
+type LayoutSnapshotsByEnvironment = Record<string, Record<string, TableLayoutSnapshot>>
+
+function buildLayoutSnapshot(
+  tableList: UiTable[],
+  environmentId: string,
+): Record<string, TableLayoutSnapshot> {
+  const snapshot: Record<string, TableLayoutSnapshot> = {}
+  for (const table of tableList) {
+    if (table.environmentId !== environmentId) continue
+    snapshot[table.id] = {
+      x: table.x,
+      y: table.y,
+      rotation: table.rotation,
+      shape: table.shape,
+      width: table.width,
+      height: table.height,
+    }
+  }
+  return snapshot
+}
+
+function buildAllLayoutSnapshots(tableList: UiTable[]): LayoutSnapshotsByEnvironment {
+  const snapshots: LayoutSnapshotsByEnvironment = {}
+  for (const table of tableList) {
+    if (!snapshots[table.environmentId]) {
+      snapshots[table.environmentId] = {}
+    }
+    snapshots[table.environmentId][table.id] = {
+      x: table.x,
+      y: table.y,
+      rotation: table.rotation,
+      shape: table.shape,
+      width: table.width,
+      height: table.height,
+    }
+  }
+  return snapshots
+}
+
+function areLayoutSnapshotsEqual(
+  current: Record<string, TableLayoutSnapshot>,
+  saved: Record<string, TableLayoutSnapshot>,
+): boolean {
+  const currentIds = Object.keys(current)
+  const savedIds = Object.keys(saved)
+  if (currentIds.length !== savedIds.length) return false
+  return currentIds.every((id) => {
+    const a = current[id]
+    const b = saved[id]
+    if (!b) return false
+    return (
+      a.x === b.x &&
+      a.y === b.y &&
+      a.rotation === b.rotation &&
+      a.shape === b.shape &&
+      a.width === b.width &&
+      a.height === b.height
+    )
+  })
 }
 
 type CreateTableForm = {
@@ -171,6 +238,21 @@ export default function TablesPage() {
   const [savingEnvironment, setSavingEnvironment] = useState(false)
   const [environmentDetailLoading, setEnvironmentDetailLoading] = useState(false)
   const [environmentDetailError, setEnvironmentDetailError] = useState<string | null>(null)
+  const [layoutSnapshots, setLayoutSnapshots] = useState<LayoutSnapshotsByEnvironment>({})
+  const [isLayoutDirty, setIsLayoutDirty] = useState(false)
+  const tablesRef = useRef(tables)
+  tablesRef.current = tables
+
+  const syncEnvironmentLayoutSnapshot = useCallback(
+    (environmentId: string, tableList: UiTable[]) => {
+      if (!environmentId) return
+      setLayoutSnapshots((prev) => ({
+        ...prev,
+        [environmentId]: buildLayoutSnapshot(tableList, environmentId),
+      }))
+    },
+    [],
+  )
 
   const environmentOptions = useMemo(() => {
     const byId = new Map<string, string>()
@@ -239,7 +321,9 @@ export default function TablesPage() {
       }
 
       const rows = tablesResult.value
-      setTables(rows.map(adminTableToUi))
+      const uiRows = rows.map(adminTableToUi)
+      setTables(uiRows)
+      setLayoutSnapshots(buildAllLayoutSnapshots(uiRows))
 
       if (envResult.status === "fulfilled") {
         setEnvironments(envResult.value)
@@ -276,6 +360,24 @@ export default function TablesPage() {
         : [],
     [tables, activeEnvironmentId],
   )
+
+  const evaluateLayoutDirty = useCallback(
+    (tableList: UiTable[]) => {
+      if (!activeEnvironmentId) return false
+      const saved = layoutSnapshots[activeEnvironmentId]
+      if (!saved) return false
+      const current = buildLayoutSnapshot(tableList, activeEnvironmentId)
+      return !areLayoutSnapshotsEqual(current, saved)
+    },
+    [activeEnvironmentId, layoutSnapshots],
+  )
+
+  useEffect(() => {
+    if (isDragging || !activeEnvironmentId) return
+    setIsLayoutDirty(evaluateLayoutDirty(tables))
+  }, [tables, activeEnvironmentId, layoutSnapshots, isDragging, evaluateLayoutDirty])
+
+  useUnsavedChangesToast(isLayoutDirty, TABLES_LAYOUT_UNSAVED_MESSAGE)
 
   const selectedTable = tables.find((t) => t.id === selectedTableId) || null
   const selectedReservationSlots = selectedTableId
@@ -329,8 +431,11 @@ export default function TablesPage() {
   )
 
   const handleMouseUp = useCallback(() => {
+    if (isDragging) {
+      setIsLayoutDirty(evaluateLayoutDirty(tablesRef.current))
+    }
     setIsDragging(false)
-  }, [])
+  }, [isDragging, evaluateLayoutDirty])
 
   const handleCanvasClick = useCallback((e: React.MouseEvent) => {
     if (e.target === canvasRef.current) {
@@ -564,9 +669,11 @@ export default function TablesPage() {
     })
     try {
       const updated = await patchAdminTable(selectedTable.id, uiTableToPatch(selectedTable))
-      setTables((prev) =>
-        prev.map((t) => (t.id === updated.id ? adminTableToUi(updated) : t)),
-      )
+      setTables((prev) => {
+        const next = prev.map((t) => (t.id === updated.id ? adminTableToUi(updated) : t))
+        syncEnvironmentLayoutSnapshot(updated.environmentId, next)
+        return next
+      })
       toast.dismiss(loadingId)
       const desc = `${updated.name} se actualizó correctamente.`
       toast.success("Cambios guardados", { description: desc })
@@ -577,7 +684,7 @@ export default function TablesPage() {
     } finally {
       setSavingProperties(false)
     }
-  }, [selectedTable])
+  }, [selectedTable, syncEnvironmentLayoutSnapshot])
 
   const deleteSelectedTable = useCallback(async () => {
     if (!selectedTable) return
@@ -587,7 +694,13 @@ export default function TablesPage() {
     const loadingId = toast.loading("Eliminando mesa…", { description: name })
     try {
       await deleteAdminTable(id)
-      setTables((prev) => prev.filter((t) => t.id !== id))
+      setTables((prev) => {
+        const next = prev.filter((t) => t.id !== id)
+        if (selectedTable.environmentId) {
+          syncEnvironmentLayoutSnapshot(selectedTable.environmentId, next)
+        }
+        return next
+      })
       setSelectedTableId(null)
       toast.dismiss(loadingId)
       const desc = `Se eliminó ${name}.`
@@ -599,7 +712,7 @@ export default function TablesPage() {
     } finally {
       setDeletingTable(false)
     }
-  }, [selectedTable])
+  }, [selectedTable, syncEnvironmentLayoutSnapshot])
 
   if (isLoading) {
     return (
@@ -611,7 +724,7 @@ export default function TablesPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 pb-28">
       <Dialog open={createTableOpen} onOpenChange={setCreateTableOpen}>
         <DialogContent>
           <DialogHeader>
@@ -952,40 +1065,6 @@ export default function TablesPage() {
             <span className="font-medium text-foreground">Guardar cambios</span>.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={() => addNewTable()}
-            disabled={
-              savingLayout || savingProperties || deletingTable || !hasEnvironments
-            }
-            title={
-              !hasEnvironments
-                ? "Creá al menos un ambiente antes de agregar mesas"
-                : undefined
-            }
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Agregar mesa
-          </Button>
-          <Button
-            title="Envía posición, forma y rotación de las mesas de este ambiente"
-            onClick={() => void saveLayout()}
-            disabled={
-              savingLayout ||
-              savingProperties ||
-              deletingTable ||
-              tablesInActiveEnvironment.length === 0
-            }
-          >
-            {savingLayout ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="mr-2 h-4 w-4" />
-            )}
-            {savingLayout ? "Guardando…" : "Guardar layout"}
-          </Button>
-        </div>
       </div>
 
       {loadError ? (
@@ -1149,25 +1228,6 @@ export default function TablesPage() {
               </div>
             </CardContent>
           </Card>
-
-          <div className="mt-4 flex flex-wrap items-center gap-6">
-            <span className="text-sm font-medium text-muted-foreground">Leyenda:</span>
-            {Object.entries(statusColors).map(([key, color]) => (
-              <div key={key} className="flex items-center gap-2">
-                <div className={cn("h-3 w-3 rounded-full", color)} />
-                <span className="text-sm text-muted-foreground">
-                  {statusLabels[key as keyof typeof statusLabels]}
-                </span>
-              </div>
-            ))}
-            <div className="flex items-center gap-2">
-              <div
-                className="box-border h-3 w-3 rounded-full border-2 border-amber-400 bg-emerald-500"
-                title="Mesa activa con reserva"
-              />
-              <span className="text-sm text-muted-foreground">Con reserva hoy</span>
-            </div>
-          </div>
         </div>
 
         {selectedTable && (
@@ -1358,6 +1418,17 @@ export default function TablesPage() {
           </Card>
         )}
       </div>
+
+      <TablesLayoutFooter
+        isLayoutDirty={isLayoutDirty}
+        savingLayout={savingLayout}
+        savingProperties={savingProperties}
+        deletingTable={deletingTable}
+        hasEnvironments={hasEnvironments}
+        canSaveLayout={tablesInActiveEnvironment.length > 0}
+        onAddTable={() => addNewTable()}
+        onSaveLayout={() => void saveLayout()}
+      />
     </div>
   )
 }

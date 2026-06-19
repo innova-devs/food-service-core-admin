@@ -169,8 +169,16 @@ export function ReservationsTable({
                 <TableCell>{formatDate(reservation.date)}</TableCell>
                 <TableCell>{reservation.time}</TableCell>
                 <TableCell>{reservation.guests}</TableCell>
-                <TableCell className="max-w-[14rem] text-muted-foreground text-sm">
-                  {reservation.tablesLabel ?? "—"}
+                <TableCell className="max-w-[14rem] whitespace-normal text-muted-foreground text-sm">
+                  {reservation.tablesLabels?.length ? (
+                    <div className="flex flex-col gap-0.5">
+                      {reservation.tablesLabels.map((label, index) => (
+                        <span key={index}>{label}</span>
+                      ))}
+                    </div>
+                  ) : (
+                    "—"
+                  )}
                 </TableCell>
                 <TableCell>
                   <ReservationStatusBadge status={reservation.status} />

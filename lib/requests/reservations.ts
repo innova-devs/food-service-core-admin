@@ -96,9 +96,9 @@ export interface TableReservationSlot {
   customerLabel: string
 }
 
-function tablesLabelFrom(
+function tablesLabelsFrom(
   links: AdminReservationTableLinkRaw[] | undefined,
-): string | null {
+): string[] | null {
   if (!links?.length) return null
   const parts = links
     .map((link) => {
@@ -108,7 +108,7 @@ function tablesLabelFrom(
       return env ? `${t.name} (${env})` : t.name
     })
     .filter((p): p is string => Boolean(p))
-  return parts.length ? parts.join(", ") : null
+  return parts.length ? parts : null
 }
 
 function mapCustomerToLabel(c: AdminCustomerRaw | null | undefined): string {
@@ -168,7 +168,7 @@ export function mapAdminReservationToReservation(
     time: formatReservationTime(raw.start_time),
     guests: raw.party_size,
     status: raw.status,
-    tablesLabel: tablesLabelFrom(raw.reservation_table),
+    tablesLabels: tablesLabelsFrom(raw.reservation_table),
     notes: raw.notes,
   }
 }

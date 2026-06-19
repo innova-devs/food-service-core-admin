@@ -5,9 +5,10 @@ import { isAxiosError } from "axios"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { BotPersonalitySelector } from "@/components/settings/bot-personality-selector"
+import { SettingsFormFooter, SETTINGS_UNSAVED_MESSAGE } from "@/components/settings/settings-form-footer"
 import { SettingsSection } from "@/components/settings/settings-section"
 import { ToggleField } from "@/components/settings/toggle-field"
 import { NumberInputField } from "@/components/settings/number-input-field"
@@ -18,6 +19,7 @@ import {
   type AdminBusinessConfig,
   type AdminBusinessConfigPatch,
 } from "@/lib/requests/business-config"
+import { useUnsavedChangesToast } from "@/hooks/use-unsaved-changes-toast"
 
 type SettingsData = AdminBusinessConfig
 
@@ -67,6 +69,8 @@ export default function SettingsPage() {
   }, [settings, initialSettings])
 
   const isDirty = Object.keys(patchPayload).length > 0
+
+  useUnsavedChangesToast(isDirty, SETTINGS_UNSAVED_MESSAGE)
 
   const validate = (): boolean => {
     if (!settings) return false
@@ -145,6 +149,12 @@ export default function SettingsPage() {
     toast.info("Cambios descartados")
   }
 
+  const handlePersonalityUpdated = useCallback(async () => {
+    const refreshed = await fetchAdminBusinessConfig()
+    setSettings(refreshed)
+    setInitialSettings(refreshed)
+  }, [])
+
   const handleResetDefaults = async () => {
     setIsResetting(true)
     try {
@@ -174,7 +184,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 pb-28">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Configuración</h1>
         <p className="text-muted-foreground">
@@ -198,13 +208,28 @@ export default function SettingsPage() {
           <ToggleField
             id="humanize-messages"
             label="Humanizar mensajes"
-            description="Hacer que las respuestas del bot suenen más naturales y conversacionales"
+            description="Humaniza mensajes determinísticos con la personalidad elegida"
             checked={settings.humanize_messages}
             onCheckedChange={(checked) =>
               updateSetting("humanize_messages", checked)
             }
             disabled={!settings.bot_enabled}
           />
+          {settings.humanize_messages ? (
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-medium">Personalidad del asistente</p>
+                <p className="text-sm text-muted-foreground">
+                  Elegí el tono de voz del asistente de WhatsApp. Compará los ejemplos
+                  antes de confirmar el cambio.
+                </p>
+              </div>
+              <BotPersonalitySelector
+                selectedPersonalityId={settings.bot_personality_id}
+                onPersonalityUpdated={handlePersonalityUpdated}
+              />
+            </div>
+          ) : null}
         </SettingsSection>
 
         {/* Human Handoff */}
@@ -493,30 +518,14 @@ export default function SettingsPage() {
         </SettingsSection>
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center justify-end gap-3 border-t pt-6">
-        <Button
-          type="button"
-          variant="destructive"
-          onClick={handleResetDefaults}
-          disabled={isSaving || isResetting}
-        >
-          {isResetting && <Loader2 className="mr-2 size-4 animate-spin" />}
-          Restaurar defaults
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={handleCancel}
-          disabled={isSaving || isResetting || !isDirty}
-        >
-          Cancelar
-        </Button>
-        <Button type="button" onClick={handleSave} disabled={isSaving || isResetting || !isDirty}>
-          {isSaving && <Loader2 className="mr-2 size-4 animate-spin" />}
-          Guardar Cambios
-        </Button>
-      </div>
+      <SettingsFormFooter
+        isDirty={isDirty}
+        isSaving={isSaving}
+        isResetting={isResetting}
+        onSave={() => void handleSave()}
+        onCancel={handleCancel}
+        onResetDefaults={() => void handleResetDefaults()}
+      />
     </div>
   )
 }
