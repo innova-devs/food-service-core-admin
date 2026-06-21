@@ -342,6 +342,11 @@ export function OrdersTable({
                               <span className="text-sm font-medium">
                                 {item.name}
                               </span>
+                              {item.notes ? (
+                                <p className="mt-0.5 text-xs italic text-muted-foreground">
+                                  {item.notes}
+                                </p>
+                              ) : null}
                               <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">
                                 {item.menuItemId}
                               </p>

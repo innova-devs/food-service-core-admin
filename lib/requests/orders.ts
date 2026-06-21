@@ -44,6 +44,7 @@ export interface AdminOrderItemRaw {
   quantity: number
   unit_price: string | number
   serves_people: number | null
+  notes?: string | null
   menu_item?: AdminOrderMenuItemRaw | null
 }
 
@@ -193,6 +194,7 @@ function mapLineItems(raw: AdminOrderRaw): OrderLineItem[] {
       unitPrice,
       lineTotal,
       servesPeople: oi.serves_people,
+      notes: oi.notes ?? null,
     }
   })
 }

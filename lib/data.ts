@@ -24,6 +24,8 @@ export interface OrderLineItem {
   lineTotal: number
   /** `order_item.serves_people` */
   servesPeople?: number | null
+  /** Nota libre del cliente para este ítem. */
+  notes?: string | null
 }
 
 /** Snapshot JSON (`orders.delivery_address_snapshot`) — claves habituales de `customer_address` */
