@@ -1,6 +1,6 @@
 import {
-  isNegativeConversationSentiment,
-  type NegativeConversationSentiment,
+  isConversationSentiment,
+  type ConversationSentiment,
 } from "@/lib/constants/conversationSentiment"
 
 /**
@@ -210,12 +210,12 @@ export function isAdminWhatsappRealtimePayload(
   )
 }
 
-/** Evento `admin:conversation_sentiment` — sentiment negativo con resumen IA. */
+/** Evento `admin:conversation_sentiment` — actualización de sentimiento con resumen IA. */
 export interface AdminConversationSentimentPayload {
   type: "conversation.sentiment_updated"
   businessId: string
   conversationId: string
-  sentiment: NegativeConversationSentiment
+  sentiment: ConversationSentiment
   summary: string
   updatedAt: string
 }
@@ -229,7 +229,7 @@ export function isAdminConversationSentimentPayload(
     o.type === "conversation.sentiment_updated" &&
     typeof o.businessId === "string" &&
     typeof o.conversationId === "string" &&
-    isNegativeConversationSentiment(o.sentiment) &&
+    isConversationSentiment(o.sentiment) &&
     typeof o.summary === "string" &&
     typeof o.updatedAt === "string"
   )

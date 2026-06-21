@@ -36,6 +36,7 @@ import {
 import {
   getSentimentLabelEs,
   getSentimentVisualStyle,
+  isNegativeConversationSentiment,
 } from "@/lib/constants/conversationSentiment"
 
 export type AdminNotificationKind =
@@ -483,6 +484,13 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
           /* noop */
         }
       })
+
+      const isNegative = isNegativeConversationSentiment(p.sentiment)
+      const onMessages = isMessagesPath(pathnameRef.current)
+
+      if (!isNegative || onMessages) {
+        return
+      }
 
       const sentimentLabel = getSentimentLabelEs(p.sentiment)
       const sentimentStyle = getSentimentVisualStyle(p.sentiment)
