@@ -1,3 +1,8 @@
+import {
+  isNegativeConversationSentiment,
+  type NegativeConversationSentiment,
+} from "@/lib/constants/conversationSentiment"
+
 /**
  * Alineado con el backend (`AdminOrderRealtimePayload`).
  * Evento: `admin:order` con discriminador `type`.
@@ -202,5 +207,30 @@ export function isAdminWhatsappRealtimePayload(
     isAdminWhatsappMessageCreatedPayload(value) ||
     isAdminWhatsappSupportRequestedPayload(value) ||
     isAdminWhatsappBotAutoReactivatedPayload(value)
+  )
+}
+
+/** Evento `admin:conversation_sentiment` — sentiment negativo con resumen IA. */
+export interface AdminConversationSentimentPayload {
+  type: "conversation.sentiment_updated"
+  businessId: string
+  conversationId: string
+  sentiment: NegativeConversationSentiment
+  summary: string
+  updatedAt: string
+}
+
+export function isAdminConversationSentimentPayload(
+  value: unknown,
+): value is AdminConversationSentimentPayload {
+  if (!value || typeof value !== "object") return false
+  const o = value as Record<string, unknown>
+  return (
+    o.type === "conversation.sentiment_updated" &&
+    typeof o.businessId === "string" &&
+    typeof o.conversationId === "string" &&
+    isNegativeConversationSentiment(o.sentiment) &&
+    typeof o.summary === "string" &&
+    typeof o.updatedAt === "string"
   )
 }

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { MessageBubble, type Message } from "./message-bubble"
 import { MessageInput } from "./message-input"
+import { ConversationSentimentBanner } from "./conversation-sentiment-banner"
 import type { ChatItemData } from "./chat-item"
 
 interface ChatWindowProps {
@@ -29,6 +30,7 @@ export function ChatWindow({
   onToggleBot,
 }: ChatWindowProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const sentiment = chat.aiSentiment ?? null
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -79,6 +81,13 @@ export function ChatWindow({
           </div>
         </div>
       </div>
+
+      {sentiment ? (
+        <ConversationSentimentBanner
+          sentiment={sentiment}
+          summary={chat.aiSentimentSummary}
+        />
+      ) : null}
 
       {/* Messages Area */}
       <div

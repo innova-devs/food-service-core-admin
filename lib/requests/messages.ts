@@ -1,6 +1,11 @@
 import { api } from "@/lib/api"
+import {
+  isConversationSentiment,
+  type ConversationSentiment,
+} from "@/lib/constants/conversationSentiment"
 
 export const ADMIN_WHATSAPP_MESSAGES_PATH = "/admin/whatsapp/messages"
+export const ADMIN_WHATSAPP_CONVERSATIONS_PATH = "/admin/whatsapp/conversations"
 
 export interface AdminWhatsappCustomer {
   id: string
@@ -11,7 +16,38 @@ export interface AdminWhatsappCustomer {
 export interface AdminWhatsappConversation {
   id: string
   botEnabled?: boolean
+  aiSentiment?: ConversationSentiment | null
+  aiSentimentUpdatedAt?: string | null
   customer: AdminWhatsappCustomer
+}
+
+export type AdminWhatsappConversationStatus = "open" | "closed"
+
+export interface AdminWhatsappConversationListItem {
+  id: string
+  status: AdminWhatsappConversationStatus
+  startedAt: string
+  lastMessageAt: string
+  aiSentiment: ConversationSentiment | null
+  aiSentimentUpdatedAt: string | null
+  customer: AdminWhatsappCustomer
+  botEnabled: boolean
+  currentIntent: string | null
+}
+
+export interface FetchAdminWhatsappConversationsParams {
+  page?: number
+  pageSize?: number
+  sentiment?: ConversationSentiment
+  customerPhone?: string
+}
+
+export interface AdminWhatsappConversationsListResponse {
+  items: AdminWhatsappConversationListItem[]
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
 }
 
 export interface AdminWhatsappMessage {
@@ -44,6 +80,10 @@ interface AdminWhatsappMessageRaw {
     id?: string | null
     bot_enabled?: boolean | null
     botEnabled?: boolean | null
+    ai_sentiment?: string | null
+    aiSentiment?: string | null
+    ai_sentiment_updated_at?: string | null
+    aiSentimentUpdatedAt?: string | null
     customer?: {
       id?: string | null
       name?: string | null
@@ -55,6 +95,37 @@ interface AdminWhatsappMessageRaw {
 
 interface AdminWhatsappMessagesListResponseRaw {
   items?: AdminWhatsappMessageRaw[]
+  total?: number
+  page?: number
+  pageSize?: number
+  totalPages?: number
+}
+
+interface AdminWhatsappConversationListItemRaw {
+  id?: string | null
+  status?: string | null
+  started_at?: string | null
+  startedAt?: string | null
+  last_message_at?: string | null
+  lastMessageAt?: string | null
+  ai_sentiment?: string | null
+  aiSentiment?: string | null
+  ai_sentiment_updated_at?: string | null
+  aiSentimentUpdatedAt?: string | null
+  bot_enabled?: boolean | null
+  botEnabled?: boolean | null
+  current_intent?: string | null
+  currentIntent?: string | null
+  customer?: {
+    id?: string | null
+    name?: string | null
+    phone_number?: string | null
+    phoneNumber?: string | null
+  } | null
+}
+
+interface AdminWhatsappConversationsListResponseRaw {
+  items?: AdminWhatsappConversationListItemRaw[]
   total?: number
   page?: number
   pageSize?: number
@@ -83,9 +154,47 @@ function toNonEmpty(value: unknown): string {
   return typeof value === "string" ? value : ""
 }
 
+function parseConversationSentiment(
+  value: unknown,
+): ConversationSentiment | null {
+  return isConversationSentiment(value) ? value : null
+}
+
+function mapRawConversationCustomer(
+  raw:
+    | AdminWhatsappMessageRaw["conversation"]
+    | AdminWhatsappConversationListItemRaw["customer"]
+    | null
+    | undefined,
+): AdminWhatsappCustomer {
+  if (!raw || typeof raw !== "object" || !("customer" in raw)) {
+    const customerRaw = raw as AdminWhatsappConversationListItemRaw["customer"]
+    return {
+      id: toNonEmpty(customerRaw?.id),
+      name: customerRaw?.name ?? null,
+      phoneNumber: toNonEmpty(
+        customerRaw?.phoneNumber ?? customerRaw?.phone_number,
+      ),
+    }
+  }
+
+  return {
+    id: toNonEmpty(raw.customer?.id),
+    name: raw.customer?.name ?? null,
+    phoneNumber: toNonEmpty(
+      raw.customer?.phoneNumber ?? raw.customer?.phone_number,
+    ),
+  }
+}
+
 function mapRawMessage(raw: AdminWhatsappMessageRaw): AdminWhatsappMessage {
   const rawBotEnabled =
     raw.conversation?.botEnabled ?? raw.conversation?.bot_enabled
+  const rawSentiment =
+    raw.conversation?.aiSentiment ?? raw.conversation?.ai_sentiment
+  const rawSentimentUpdatedAt =
+    raw.conversation?.aiSentimentUpdatedAt ??
+    raw.conversation?.ai_sentiment_updated_at
   return {
     id: toNonEmpty(raw.id ?? raw.message_id),
     sender: toNonEmpty(raw.sender),
@@ -96,15 +205,71 @@ function mapRawMessage(raw: AdminWhatsappMessageRaw): AdminWhatsappMessage {
       id: toNonEmpty(raw.conversation?.id),
       botEnabled:
         typeof rawBotEnabled === "boolean" ? rawBotEnabled : undefined,
-      customer: {
-        id: toNonEmpty(raw.conversation?.customer?.id),
-        name: raw.conversation?.customer?.name ?? null,
-        phoneNumber: toNonEmpty(
-          raw.conversation?.customer?.phoneNumber ??
-            raw.conversation?.customer?.phone_number,
-        ),
+      aiSentiment: parseConversationSentiment(rawSentiment),
+      aiSentimentUpdatedAt:
+        typeof rawSentimentUpdatedAt === "string" && rawSentimentUpdatedAt.trim()
+          ? rawSentimentUpdatedAt
+          : null,
+      customer: mapRawConversationCustomer(raw.conversation),
+    },
+  }
+}
+
+function mapRawConversationListItem(
+  raw: AdminWhatsappConversationListItemRaw,
+): AdminWhatsappConversationListItem {
+  const rawSentiment = raw.aiSentiment ?? raw.ai_sentiment
+  const rawSentimentUpdatedAt =
+    raw.aiSentimentUpdatedAt ?? raw.ai_sentiment_updated_at
+  const status = raw.status === "closed" ? "closed" : "open"
+
+  return {
+    id: toNonEmpty(raw.id),
+    status,
+    startedAt: toNonEmpty(raw.startedAt ?? raw.started_at),
+    lastMessageAt: toNonEmpty(raw.lastMessageAt ?? raw.last_message_at),
+    aiSentiment: parseConversationSentiment(rawSentiment),
+    aiSentimentUpdatedAt:
+      typeof rawSentimentUpdatedAt === "string" && rawSentimentUpdatedAt.trim()
+        ? rawSentimentUpdatedAt
+        : null,
+    customer: mapRawConversationCustomer(raw.customer),
+    botEnabled: Boolean(raw.botEnabled ?? raw.bot_enabled),
+    currentIntent:
+      typeof (raw.currentIntent ?? raw.current_intent) === "string"
+        ? String(raw.currentIntent ?? raw.current_intent)
+        : null,
+  }
+}
+
+export async function fetchAdminWhatsappConversations(
+  params: FetchAdminWhatsappConversationsParams = {},
+): Promise<AdminWhatsappConversationsListResponse> {
+  const page = params.page ?? 1
+  const pageSize = Math.min(params.pageSize ?? 20, 100)
+
+  const { data } = await api.get<AdminWhatsappConversationsListResponseRaw>(
+    ADMIN_WHATSAPP_CONVERSATIONS_PATH,
+    {
+      params: {
+        page,
+        pageSize,
+        ...(params.sentiment ? { sentiment: params.sentiment } : {}),
+        ...(params.customerPhone?.trim()
+          ? { customerPhone: params.customerPhone.trim() }
+          : {}),
       },
     },
+  )
+
+  return {
+    items: Array.isArray(data.items)
+      ? data.items.map(mapRawConversationListItem)
+      : [],
+    total: Number.isFinite(data.total) ? Number(data.total) : 0,
+    page: Number.isFinite(data.page) ? Number(data.page) : page,
+    pageSize: Number.isFinite(data.pageSize) ? Number(data.pageSize) : pageSize,
+    totalPages: Number.isFinite(data.totalPages) ? Number(data.totalPages) : 0,
   }
 }
 

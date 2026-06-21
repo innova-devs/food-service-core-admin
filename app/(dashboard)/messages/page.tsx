@@ -16,14 +16,23 @@ import type {
 } from "@/components/messages/message-bubble"
 import {
   fetchAdminWhatsappConversationBotStatus,
+  fetchAdminWhatsappConversations,
   fetchAdminWhatsappMessages,
   patchAdminWhatsappConversationBotStatus,
   sendAdminWhatsappMessage,
+  type AdminWhatsappConversationListItem,
 } from "@/lib/requests/messages"
 import type {
   AdminWhatsappMessageCreatedPayload,
   AdminWhatsappBotAutoReactivatedPayload,
+  AdminConversationSentimentPayload,
 } from "@/lib/types/admin-realtime"
+import {
+  chatMatchesSentimentFilter,
+  resolveApiSentimentFilter,
+  type ConversationSentiment,
+  type ConversationSentimentFilter,
+} from "@/lib/constants/conversationSentiment"
 
 const BOT_REENGAGE_MESSAGE =
   "Muchas gracias por escribirnos. Fue un placer ayudarte. Te dejamos nuevamente con nuestro asistente para que pueda acompañarte en tus próximas consultas. Estamos para vos siempre."
@@ -152,6 +161,48 @@ function resolveSenderKind(
   return "admin"
 }
 
+function mergeChatSentiment(
+  chat: ChatItemData,
+  sentimentMeta?: {
+    sentiment: ConversationSentiment
+    summary: string
+    updatedAt: string
+  },
+): ChatItemData {
+  if (!sentimentMeta) return chat
+  return {
+    ...chat,
+    aiSentiment: sentimentMeta.sentiment,
+    aiSentimentSummary: sentimentMeta.summary,
+    aiSentimentUpdatedAt: sentimentMeta.updatedAt,
+  }
+}
+
+function buildChatFromConversationListItem(
+  conversation: AdminWhatsappConversationListItem,
+  existing?: ChatItemData,
+): ChatItemData {
+  return {
+    id: conversation.id,
+    customerName:
+      existing?.customerName ??
+      (conversation.customer.name?.trim() ||
+        conversation.customer.phoneNumber ||
+        "Cliente"),
+    customerPhone:
+      conversation.customer.phoneNumber || existing?.customerPhone,
+    lastMessage: existing?.lastMessage ?? "",
+    timestamp:
+      existing?.timestamp || toChatTimestamp(conversation.lastMessageAt),
+    unreadCount: existing?.unreadCount ?? 0,
+    isOnline: existing?.isOnline ?? false,
+    botEnabled: conversation.botEnabled,
+    aiSentiment: conversation.aiSentiment,
+    aiSentimentUpdatedAt: conversation.aiSentimentUpdatedAt,
+    aiSentimentSummary: existing?.aiSentimentSummary ?? null,
+  }
+}
+
 export default function MessagesPage() {
   return (
     <Suspense
@@ -171,11 +222,15 @@ function MessagesPageContent() {
   const searchParams = useSearchParams()
   const {
     subscribeToWhatsappRealtime,
+    subscribeToConversationSentiment,
     whatsappSupportByConversation,
+    whatsappSentimentByConversation,
     acknowledgeWhatsappSupportConversation,
   } = useAdminSocket()
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
+  const [sentimentFilter, setSentimentFilter] =
+    useState<ConversationSentimentFilter>("all")
   const [chats, setChats] = useState<ChatItemData[]>([])
   const [messages, setMessages] = useState<Record<string, Message[]>>({})
   const [botEnabledByConversation, setBotEnabledByConversation] = useState<
@@ -188,35 +243,109 @@ function MessagesPageContent() {
     string | null
   >(null)
   const [loading, setLoading] = useState(true)
+  const [listLoading, setListLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const processedUrlConversationRef = useRef<string | null>(null)
+  const skipFilterReloadRef = useRef(true)
 
   const selectedChat = chats.find((chat) => chat.id === selectedChatId)
   const currentMessages = selectedChatId ? messages[selectedChatId] ?? [] : []
 
   const chatsForList = useMemo(
     () =>
-      chats.map((c) => ({
-        ...c,
-        needsSupport: Boolean(whatsappSupportByConversation[c.id]),
-      })),
-    [chats, whatsappSupportByConversation],
+      chats.map((c) =>
+        mergeChatSentiment(
+          {
+            ...c,
+            needsSupport: Boolean(whatsappSupportByConversation[c.id]),
+          },
+          whatsappSentimentByConversation[c.id],
+        ),
+      ),
+    [chats, whatsappSupportByConversation, whatsappSentimentByConversation],
   )
+
+  const visibleChatsForList = useMemo(
+    () =>
+      chatsForList.filter((chat) =>
+        chatMatchesSentimentFilter(chat, sentimentFilter),
+      ),
+    [chatsForList, sentimentFilter],
+  )
+
+  const reloadConversationsForFilter = useCallback(
+    async (filter: ConversationSentimentFilter) => {
+      setListLoading(true)
+      try {
+        const conversationsData = await fetchAdminWhatsappConversations({
+          page: 1,
+          pageSize: 100,
+          sentiment: resolveApiSentimentFilter(filter),
+        })
+
+        setChats((prev) => {
+          const prevById = new Map(prev.map((chat) => [chat.id, chat]))
+          return conversationsData.items.map((conversation) =>
+            buildChatFromConversationListItem(
+              conversation,
+              prevById.get(conversation.id),
+            ),
+          )
+        })
+      } catch (e) {
+        if (isAxiosError(e)) {
+          const msg =
+            (e.response?.data as { message?: string })?.message ?? e.message
+          toast.error(
+            typeof msg === "string" && msg
+              ? msg
+              : "No se pudieron filtrar las conversaciones.",
+          )
+        } else {
+          toast.error("No se pudieron filtrar las conversaciones.")
+        }
+      } finally {
+        setListLoading(false)
+      }
+    },
+    [],
+  )
+
   const loadInitialMessages = useCallback(async () => {
     setLoading(true)
     setError(null)
     debugBotSync("Iniciando carga inicial de conversaciones")
     try {
-      const data = await fetchAdminWhatsappMessages({
-        page: 1,
-        pageSize: 100,
-      })
+      const [conversationsData, messagesData] = await Promise.all([
+        fetchAdminWhatsappConversations({ page: 1, pageSize: 100 }),
+        fetchAdminWhatsappMessages({ page: 1, pageSize: 100 }),
+      ])
 
       const nextChatsMap = new Map<string, ChatItemData>()
       const nextMessages: Record<string, Message[]> = {}
       const nextBotEnabledByConversation: Record<string, boolean> = {}
 
-      for (const item of data.items) {
+      for (const conversation of conversationsData.items) {
+        if (!conversation.id) continue
+        nextChatsMap.set(conversation.id, {
+          id: conversation.id,
+          customerName:
+            conversation.customer.name?.trim() ||
+            conversation.customer.phoneNumber ||
+            "Cliente",
+          customerPhone: conversation.customer.phoneNumber,
+          lastMessage: "",
+          timestamp: toChatTimestamp(conversation.lastMessageAt),
+          unreadCount: 0,
+          isOnline: false,
+          botEnabled: conversation.botEnabled,
+          aiSentiment: conversation.aiSentiment,
+          aiSentimentUpdatedAt: conversation.aiSentimentUpdatedAt,
+        })
+        nextBotEnabledByConversation[conversation.id] = conversation.botEnabled
+      }
+
+      for (const item of messagesData.items) {
         const conversationId = item.conversation.id
         if (!conversationId) continue
         if (
@@ -235,7 +364,21 @@ function MessagesPageContent() {
             message,
             ...(nextMessages[conversationId] ?? []),
           ]
-          if (!nextChatsMap.has(conversationId)) {
+          const existingChat = nextChatsMap.get(conversationId)
+          if (existingChat) {
+            nextChatsMap.set(conversationId, {
+              ...existingChat,
+              lastMessage: item.message,
+              timestamp: toChatTimestamp(item.createdAt),
+              botEnabled: item.conversation.botEnabled ?? existingChat.botEnabled,
+              aiSentiment:
+                item.conversation.aiSentiment ?? existingChat.aiSentiment ?? null,
+              aiSentimentUpdatedAt:
+                item.conversation.aiSentimentUpdatedAt ??
+                existingChat.aiSentimentUpdatedAt ??
+                null,
+            })
+          } else {
             nextChatsMap.set(conversationId, {
               id: conversationId,
               customerName:
@@ -248,6 +391,8 @@ function MessagesPageContent() {
               unreadCount: 0,
               isOnline: false,
               botEnabled: item.conversation.botEnabled ?? true,
+              aiSentiment: item.conversation.aiSentiment ?? null,
+              aiSentimentUpdatedAt: item.conversation.aiSentimentUpdatedAt ?? null,
             })
           }
           nextBotEnabledByConversation[conversationId] =
@@ -275,7 +420,21 @@ function MessagesPageContent() {
           ...(nextMessages[conversationId] ?? []),
         ]
 
-        if (!nextChatsMap.has(conversationId)) {
+        const existingChat = nextChatsMap.get(conversationId)
+        if (existingChat) {
+          nextChatsMap.set(conversationId, {
+            ...existingChat,
+            lastMessage: item.message,
+            timestamp: toChatTimestamp(item.createdAt),
+            botEnabled: item.conversation.botEnabled ?? existingChat.botEnabled,
+            aiSentiment:
+              item.conversation.aiSentiment ?? existingChat.aiSentiment ?? null,
+            aiSentimentUpdatedAt:
+              item.conversation.aiSentimentUpdatedAt ??
+              existingChat.aiSentimentUpdatedAt ??
+              null,
+          })
+        } else {
           nextChatsMap.set(conversationId, {
             id: conversationId,
             customerName:
@@ -288,6 +447,8 @@ function MessagesPageContent() {
             unreadCount: 0,
             isOnline: false,
             botEnabled: item.conversation.botEnabled ?? true,
+            aiSentiment: item.conversation.aiSentiment ?? null,
+            aiSentimentUpdatedAt: item.conversation.aiSentimentUpdatedAt ?? null,
           })
         }
 
@@ -296,7 +457,7 @@ function MessagesPageContent() {
       }
 
       debugBotSync("Cargadas conversaciones desde mensajes", {
-        totalItems: data.items.length,
+        totalItems: messagesData.items.length,
         totalConversations: nextChatsMap.size,
         hydratedBotStates: Object.keys(nextBotEnabledByConversation).length,
       })
@@ -374,6 +535,14 @@ function MessagesPageContent() {
   }, [loadInitialMessages])
 
   useEffect(() => {
+    if (skipFilterReloadRef.current) {
+      skipFilterReloadRef.current = false
+      return
+    }
+    void reloadConversationsForFilter(sentimentFilter)
+  }, [sentimentFilter, reloadConversationsForFilter])
+
+  useEffect(() => {
     return subscribeToWhatsappRealtime((payload) => {
       if (payload.type !== "whatsapp.message_created") return
 
@@ -425,6 +594,44 @@ function MessagesPageContent() {
       })
     })
   }, [subscribeToWhatsappRealtime, selectedChatId])
+
+  useEffect(() => {
+    return subscribeToConversationSentiment(
+      (payload: AdminConversationSentimentPayload) => {
+        setChats((prev) => {
+          const existing = prev.find((c) => c.id === payload.conversationId)
+          if (existing) {
+            return prev.map((chat) =>
+              chat.id === payload.conversationId
+                ? {
+                    ...chat,
+                    aiSentiment: payload.sentiment,
+                    aiSentimentSummary: payload.summary,
+                    aiSentimentUpdatedAt: payload.updatedAt,
+                  }
+                : chat,
+            )
+          }
+
+          return [
+            {
+              id: payload.conversationId,
+              customerName: "Cliente",
+              lastMessage: payload.summary,
+              timestamp: toChatTimestamp(payload.updatedAt),
+              unreadCount: selectedChatId === payload.conversationId ? 0 : 1,
+              isOnline: false,
+              botEnabled: true,
+              aiSentiment: payload.sentiment,
+              aiSentimentSummary: payload.summary,
+              aiSentimentUpdatedAt: payload.updatedAt,
+            },
+            ...prev,
+          ]
+        })
+      },
+    )
+  }, [subscribeToConversationSentiment, selectedChatId])
 
   useEffect(() => {
     const entries = Object.entries(whatsappSupportByConversation)
@@ -698,11 +905,14 @@ function MessagesPageContent() {
       {/* Chat List - Hidden on mobile when a chat is selected */}
       <div className={`w-full flex-shrink-0 md:w-80 ${selectedChatId ? "hidden md:block" : ""}`}>
         <ChatList
-          chats={chatsForList}
+          chats={visibleChatsForList}
           selectedChatId={selectedChatId}
           onSelectChat={handleSelectChat}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
+          sentimentFilter={sentimentFilter}
+          onSentimentFilterChange={setSentimentFilter}
+          listLoading={listLoading}
         />
       </div>
 
@@ -734,7 +944,10 @@ function MessagesPageContent() {
             </div>
             <div className="min-h-0 flex-1">
               <ChatWindow
-                chat={selectedChat}
+                chat={
+                  chatsForList.find((c) => c.id === selectedChat.id) ??
+                  selectedChat
+                }
                 messages={currentMessages}
                 onSendMessage={handleSendMessage}
                 botEnabled={

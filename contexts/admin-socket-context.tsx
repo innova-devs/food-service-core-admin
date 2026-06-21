@@ -15,6 +15,7 @@ import { toast } from "sonner"
 
 import { getAuthCookie } from "@/lib/auth"
 import { getSocketBaseUrl } from "@/lib/socket-base-url"
+import { cn } from "@/lib/utils"
 import { getOrderStatusLabelEs } from "@/lib/constants/orderWorkflow"
 import {
   startSupportAlertLoop,
@@ -26,10 +27,16 @@ import {
   isAdminWhatsappMessageCreatedPayload,
   isAdminWhatsappSupportRequestedPayload,
   isAdminWhatsappBotAutoReactivatedPayload,
+  isAdminConversationSentimentPayload,
   type AdminOrderRealtimePayload,
   type AdminReservationRealtimePayload,
   type AdminWhatsappRealtimePayload,
+  type AdminConversationSentimentPayload,
 } from "@/lib/types/admin-realtime"
+import {
+  getSentimentLabelEs,
+  getSentimentVisualStyle,
+} from "@/lib/constants/conversationSentiment"
 
 export type AdminNotificationKind =
   | "order"
@@ -52,6 +59,12 @@ export type WhatsappSupportConversationMeta = {
   at: string
 }
 
+export type WhatsappSentimentConversationMeta = {
+  sentiment: AdminConversationSentimentPayload["sentiment"]
+  summary: string
+  updatedAt: string
+}
+
 type AdminSocketContextValue = {
   isConnected: boolean
   notifications: AdminNotification[]
@@ -72,6 +85,11 @@ type AdminSocketContextValue = {
   /** Evento `admin:whatsapp` (`whatsapp.message_created` | `whatsapp.support_requested`). */
   subscribeToWhatsappRealtime: (
     cb: (payload: AdminWhatsappRealtimePayload) => void,
+  ) => () => void
+  /** Evento `admin:conversation_sentiment` (`conversation.sentiment_updated`). */
+  whatsappSentimentByConversation: Record<string, WhatsappSentimentConversationMeta>
+  subscribeToConversationSentiment: (
+    cb: (payload: AdminConversationSentimentPayload) => void,
   ) => () => void
 }
 
@@ -136,6 +154,8 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
   const [notifications, setNotifications] = useState<AdminNotification[]>([])
   const [whatsappSupportByConversation, setWhatsappSupportByConversation] =
     useState<Record<string, WhatsappSupportConversationMeta>>({})
+  const [whatsappSentimentByConversation, setWhatsappSentimentByConversation] =
+    useState<Record<string, WhatsappSentimentConversationMeta>>({})
 
   const orderRealtimeListenersRef = useRef(
     new Set<(payload: AdminOrderRealtimePayload) => void>(),
@@ -145,6 +165,9 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
   )
   const whatsappRealtimeListenersRef = useRef(
     new Set<(payload: AdminWhatsappRealtimePayload) => void>(),
+  )
+  const conversationSentimentListenersRef = useRef(
+    new Set<(payload: AdminConversationSentimentPayload) => void>(),
   )
   const socketRef = useRef<Socket | null>(null)
 
@@ -173,6 +196,16 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
       whatsappRealtimeListenersRef.current.add(cb)
       return () => {
         whatsappRealtimeListenersRef.current.delete(cb)
+      }
+    },
+    [],
+  )
+
+  const subscribeToConversationSentiment = useCallback(
+    (cb: (payload: AdminConversationSentimentPayload) => void) => {
+      conversationSentimentListenersRef.current.add(cb)
+      return () => {
+        conversationSentimentListenersRef.current.delete(cb)
       }
     },
     [],
@@ -428,6 +461,62 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
       }
     })
 
+    socket.on("admin:conversation_sentiment", (raw: unknown) => {
+      if (!isAdminConversationSentimentPayload(raw)) {
+        return
+      }
+      const p = raw
+
+      setWhatsappSentimentByConversation((prev) => ({
+        ...prev,
+        [p.conversationId]: {
+          sentiment: p.sentiment,
+          summary: p.summary,
+          updatedAt: p.updatedAt,
+        },
+      }))
+
+      conversationSentimentListenersRef.current.forEach((fn) => {
+        try {
+          fn(p)
+        } catch {
+          /* noop */
+        }
+      })
+
+      const sentimentLabel = getSentimentLabelEs(p.sentiment)
+      const sentimentStyle = getSentimentVisualStyle(p.sentiment)
+      const conversationQuery = encodeURIComponent(p.conversationId)
+      const openChat = () => {
+        routerRef.current.push(`/messages?conversation=${conversationQuery}`)
+      }
+
+      toast.custom(
+        (tid) => (
+          <button
+            type="button"
+            className={cn(
+              "group flex w-full max-w-sm flex-col gap-1 rounded-lg border px-3 py-3 text-left shadow-md transition hover:opacity-95",
+              sentimentStyle.banner,
+            )}
+            onClick={() => {
+              toast.dismiss(tid)
+              openChat()
+            }}
+          >
+            <span className="text-sm font-semibold leading-snug">
+              Sentimiento detectado: {sentimentLabel}
+            </span>
+            <span className="text-xs leading-snug opacity-90">{p.summary}</span>
+            <span className="pt-0.5 text-[11px] font-medium underline-offset-2 group-hover:underline">
+              Tocar para abrir la conversación
+            </span>
+          </button>
+        ),
+        { duration: 60_000 },
+      )
+    })
+
     return () => {
       stopSupportAlertLoop()
       socket.removeAllListeners()
@@ -449,6 +538,8 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
       subscribeToOrderRealtime,
       subscribeToReservationRealtime,
       subscribeToWhatsappRealtime,
+      subscribeToConversationSentiment,
+      whatsappSentimentByConversation,
     }),
     [
       isConnected,
@@ -461,6 +552,8 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
       subscribeToOrderRealtime,
       subscribeToReservationRealtime,
       subscribeToWhatsappRealtime,
+      subscribeToConversationSentiment,
+      whatsappSentimentByConversation,
     ],
   )
 
