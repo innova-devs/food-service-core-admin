@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Loader2 } from "lucide-react"
+import { ArrowLeft } from "lucide-react"
 import { toast } from "sonner"
 import Link from "next/link"
 import { isAxiosError } from "axios"
@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
+import { SettingsFormFooter } from "@/components/settings/settings-form-footer"
 import { FormSection } from "./form-section"
 import { InputField } from "./input-field"
 import { ToggleSwitch } from "./toggle-switch"
@@ -28,8 +29,22 @@ import {
   patchAdminMenuItem,
   type MenuCategoryOption,
 } from "@/lib/requests/menu-items"
+import {
+  aiMetadataToDraft,
+  fetchAiMetadataOrNull,
+  type AiMetadataDraft,
+} from "@/lib/requests/ai-metadata"
+import { AiEnrichmentModal } from "./ai-enrichment-modal"
+import { AiMetadataStatusTag } from "./ai-metadata-status-tag"
+import { ConfirmAiGenerationDialog } from "./confirm-ai-generation-dialog"
 
 const DEFAULT_CURRENCY_CODE = "ARS"
+
+const MENU_ITEM_UNSAVED_MESSAGE =
+  "Modificaste el producto. Guardá los cambios para que se apliquen en el menú."
+
+const MENU_ITEM_CREATE_UNSAVED_MESSAGE =
+  "Creá el producto para agregarlo al menú."
 
 interface MenuItemFormData {
   name: string
@@ -66,14 +81,69 @@ const initialFormData: MenuItemFormData = {
   imageUrl: null,
 }
 
+function normalizeFormData(data: MenuItemFormData) {
+  return {
+    name: data.name.trim(),
+    description: data.description.trim(),
+    categoryId: data.categoryId,
+    available: data.available,
+    featured: data.featured,
+    servesPeople: data.servesPeople.trim(),
+    price: data.price.trim().replace(",", "."),
+    currencyCode: data.currencyCode.trim() || DEFAULT_CURRENCY_CODE,
+    ingredients: data.ingredients.trim(),
+    ingredientsNotes: data.ingredientsNotes.trim(),
+    preparation: data.preparation.trim(),
+    imageUrl: data.imageUrl,
+  }
+}
+
+function isFormDataEqual(a: MenuItemFormData, b: MenuItemFormData): boolean {
+  const left = normalizeFormData(a)
+  const right = normalizeFormData(b)
+  return (
+    left.name === right.name &&
+    left.description === right.description &&
+    left.categoryId === right.categoryId &&
+    left.available === right.available &&
+    left.featured === right.featured &&
+    left.servesPeople === right.servesPeople &&
+    left.price === right.price &&
+    left.currencyCode === right.currencyCode &&
+    left.ingredients === right.ingredients &&
+    left.ingredientsNotes === right.ingredientsNotes &&
+    left.preparation === right.preparation &&
+    left.imageUrl === right.imageUrl
+  )
+}
+
 export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
   const router = useRouter()
   const [formData, setFormData] = useState<MenuItemFormData>(initialFormData)
+  const [initialFormDataState, setInitialFormDataState] =
+    useState<MenuItemFormData | null>(null)
   const [errors, setErrors] = useState<Partial<Record<keyof MenuItemFormData, string>>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [categories, setCategories] = useState<MenuCategoryOption[]>([])
   const [imageUrlBlocked, setImageUrlBlocked] = useState(false)
+  const [aiModalOpen, setAiModalOpen] = useState(false)
+  const [savedItemId, setSavedItemId] = useState<string | null>(null)
+  const [aiModalSource, setAiModalSource] = useState<"generate" | "edit-existing">(
+    "generate",
+  )
+  const [aiModalDismissible, setAiModalDismissible] = useState(false)
+  const [aiModalInitialDraft, setAiModalInitialDraft] = useState<
+    AiMetadataDraft | undefined
+  >(undefined)
+  const [redirectAfterAiSave, setRedirectAfterAiSave] = useState(true)
+  const [aiMetadataStatus, setAiMetadataStatus] = useState<
+    "loading" | "present" | "missing"
+  >("loading")
+  const [aiMetadataDraft, setAiMetadataDraft] = useState<AiMetadataDraft | null>(
+    null,
+  )
+  const [confirmGenerateOpen, setConfirmGenerateOpen] = useState(false)
 
   const handleImageBlockingChange = useCallback((blocked: boolean) => {
     setImageUrlBlocked(blocked)
@@ -84,21 +154,42 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
     }
   }, [])
 
+  const refreshAiMetadataStatus = useCallback(async (id: string) => {
+    const metadata = await fetchAiMetadataOrNull(id)
+    if (metadata) {
+      setAiMetadataDraft(aiMetadataToDraft(metadata))
+      setAiMetadataStatus("present")
+    } else {
+      setAiMetadataDraft(null)
+      setAiMetadataStatus("missing")
+    }
+  }, [])
+
   useEffect(() => {
     const load = async () => {
       setIsLoading(true)
+      if (mode === "edit") {
+        setAiMetadataStatus("loading")
+      }
       try {
-        const [categoriesData, item] = await Promise.all([
+        const [categoriesData, item, aiMetadata] = await Promise.all([
           fetchAdminMenuCategoriesOptions(),
           mode === "edit" && itemId
             ? fetchAdminMenuItemById(itemId)
+            : Promise.resolve(null),
+          mode === "edit" && itemId
+            ? fetchAiMetadataOrNull(itemId)
             : Promise.resolve(null),
         ])
 
         setCategories(categoriesData)
 
+        if (mode === "create") {
+          setInitialFormDataState({ ...initialFormData })
+        }
+
         if (item) {
-          setFormData({
+          const loadedFormData: MenuItemFormData = {
             name: item.name,
             description: item.description || "",
             categoryId: item.categoryId || "",
@@ -111,7 +202,21 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
             ingredientsNotes: item.ingredientsNotes || "",
             preparation: item.preparation || "",
             imageUrl: item.imageUrl,
-          })
+          }
+          setFormData(loadedFormData)
+          if (mode === "edit") {
+            setInitialFormDataState(loadedFormData)
+          }
+        }
+
+        if (mode === "edit") {
+          if (aiMetadata) {
+            setAiMetadataDraft(aiMetadataToDraft(aiMetadata))
+            setAiMetadataStatus("present")
+          } else {
+            setAiMetadataDraft(null)
+            setAiMetadataStatus("missing")
+          }
         }
       } catch (e) {
         const msg = isAxiosError(e)
@@ -125,6 +230,11 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
     }
     void load()
   }, [mode, itemId, router])
+
+  const isDirty = useMemo(() => {
+    if (!initialFormDataState) return false
+    return !isFormDataEqual(formData, initialFormDataState)
+  }, [formData, initialFormDataState])
 
   const updateField = <K extends keyof MenuItemFormData>(
     field: K,
@@ -162,11 +272,16 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
     return Object.keys(newErrors).length === 0
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
+  const handleSave = async () => {
     if (!validate()) {
       toast.error("Por favor corrige los errores del formulario")
+      return
+    }
+
+    if (!isDirty) {
+      toast.info(
+        mode === "create" ? "Completá el formulario para crear el producto" : "No hay cambios para guardar",
+      )
       return
     }
 
@@ -194,10 +309,14 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
         },
       }
 
+      let savedId: string
       if (mode === "create") {
-        await createAdminMenuItem(payload)
-      } else if (itemId) {
-        await patchAdminMenuItem(itemId, payload)
+        const created = await createAdminMenuItem(payload)
+        savedId = created.id
+      } else {
+        await patchAdminMenuItem(itemId!, payload)
+        savedId = itemId!
+        setInitialFormDataState({ ...formData })
       }
 
       toast.success(
@@ -205,8 +324,12 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
           ? "Producto creado correctamente"
           : "Cambios guardados correctamente"
       )
-      router.push("/menu-items")
-      router.refresh()
+      setSavedItemId(savedId)
+      setAiModalSource("generate")
+      setAiModalDismissible(false)
+      setAiModalInitialDraft(undefined)
+      setRedirectAfterAiSave(true)
+      setAiModalOpen(true)
     } catch (e) {
       const msg = isAxiosError(e)
         ? (e.response?.data as { message?: string })?.message ?? e.message
@@ -217,29 +340,110 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
     }
   }
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    await handleSave()
+  }
+
+  const handleCancel = () => {
+    if (mode === "create") {
+      router.push("/menu-items")
+      return
+    }
+
+    if (!initialFormDataState) return
+    setFormData(initialFormDataState)
+    setErrors({})
+    toast.info("Cambios descartados")
+  }
+
+  const handleAiDone = async () => {
+    setAiModalOpen(false)
+    setAiModalInitialDraft(undefined)
+
+    if (mode === "edit" && itemId) {
+      try {
+        await refreshAiMetadataStatus(itemId)
+      } catch {
+        // El guardado ya fue exitoso; el tag se actualizará en la próxima carga.
+      }
+    }
+
+    if (redirectAfterAiSave) {
+      router.push("/menu-items")
+      router.refresh()
+    }
+  }
+
+  const handleAiCancel = () => {
+    setAiModalOpen(false)
+    setAiModalInitialDraft(undefined)
+  }
+
+  const openEditAiModal = () => {
+    if (!itemId || !aiMetadataDraft) return
+    setSavedItemId(itemId)
+    setAiModalSource("edit-existing")
+    setAiModalDismissible(true)
+    setAiModalInitialDraft(aiMetadataDraft)
+    setRedirectAfterAiSave(false)
+    setAiModalOpen(true)
+  }
+
+  const handleAiStatusTagClick = () => {
+    if (mode !== "edit" || !itemId || aiMetadataStatus === "loading") return
+
+    if (aiMetadataStatus === "present") {
+      openEditAiModal()
+      return
+    }
+
+    setConfirmGenerateOpen(true)
+  }
+
+  const handleConfirmGenerate = () => {
+    if (!itemId) return
+    setConfirmGenerateOpen(false)
+    setSavedItemId(itemId)
+    setAiModalSource("generate")
+    setAiModalDismissible(false)
+    setAiModalInitialDraft(undefined)
+    setRedirectAfterAiSave(false)
+    setAiModalOpen(true)
+  }
+
   if (isLoading) {
     return <MenuItemFormSkeleton />
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-6 pb-28">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" asChild>
+      <div className="flex items-start gap-4">
+        <Button variant="ghost" size="icon" asChild className="shrink-0">
           <Link href="/menu-items">
             <ArrowLeft className="size-4" />
             <span className="sr-only">Volver</span>
           </Link>
         </Button>
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {mode === "create" ? "Nuevo producto" : "Editar producto"}
-          </h1>
-          <p className="text-muted-foreground">
-            {mode === "create"
-              ? "Completa los datos para agregar un nuevo producto al menú"
-              : "Modifica los datos del producto"}
-          </p>
+        <div className="flex min-w-0 flex-1 items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-semibold tracking-tight">
+              {mode === "create" ? "Nuevo producto" : "Editar producto"}
+            </h1>
+            <p className="text-muted-foreground">
+              {mode === "create"
+                ? "Completa los datos para agregar un nuevo producto al menú"
+                : "Modifica los datos del producto"}
+            </p>
+          </div>
+          {mode === "edit" && (
+            <AiMetadataStatusTag
+              status={aiMetadataStatus}
+              onClick={handleAiStatusTagClick}
+              disabled={isSaving}
+            />
+          )}
         </div>
       </div>
 
@@ -414,23 +618,47 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center justify-end gap-3 border-t pt-6">
-        <Button type="button" variant="outline" asChild disabled={isSaving}>
-          <Link href="/menu-items">Cancelar</Link>
-        </Button>
-        <Button type="submit" disabled={isSaving}>
-          {isSaving && <Loader2 className="mr-2 size-4 animate-spin" />}
-          {mode === "create" ? "Crear producto" : "Guardar cambios"}
-        </Button>
-      </div>
+      <SettingsFormFooter
+        isDirty={isDirty}
+        isSaving={isSaving}
+        dirtyMessage={
+          mode === "create"
+            ? MENU_ITEM_CREATE_UNSAVED_MESSAGE
+            : MENU_ITEM_UNSAVED_MESSAGE
+        }
+        saveLabel={mode === "create" ? "Crear producto" : "Guardar cambios"}
+        onSave={() => void handleSave()}
+        onCancel={handleCancel}
+      />
+
+      {savedItemId && (
+        <AiEnrichmentModal
+          open={aiModalOpen}
+          menuItemId={savedItemId}
+          menuItemName={formData.name}
+          source={aiModalSource}
+          dismissible={aiModalDismissible}
+          initialDraft={aiModalInitialDraft}
+          onDone={() => void handleAiDone()}
+          onCancel={handleAiCancel}
+        />
+      )}
+
+      {mode === "edit" && (
+        <ConfirmAiGenerationDialog
+          open={confirmGenerateOpen}
+          productName={formData.name}
+          onOpenChange={setConfirmGenerateOpen}
+          onConfirm={handleConfirmGenerate}
+        />
+      )}
     </form>
   )
 }
 
 function MenuItemFormSkeleton() {
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 pb-28">
       {/* Header */}
       <div className="flex items-center gap-4">
         <Skeleton className="size-9 rounded-md" />

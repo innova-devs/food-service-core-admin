@@ -17,6 +17,7 @@ interface SettingsFormFooterProps {
   onSave: () => void
   onCancel: () => void
   dirtyMessage?: string
+  saveLabel?: string
   onResetDefaults?: () => void
   isResetting?: boolean
 }
@@ -27,6 +28,7 @@ export function SettingsFormFooter({
   onSave,
   onCancel,
   dirtyMessage = SETTINGS_UNSAVED_MESSAGE,
+  saveLabel = "Guardar cambios",
   onResetDefaults,
   isResetting = false,
 }: SettingsFormFooterProps) {
@@ -41,23 +43,24 @@ export function SettingsFormFooter({
     >
       <div
         className={cn(
-          "mx-auto flex w-full max-w-none flex-col gap-3 px-4 py-3 md:px-6",
-          isDirty
-            ? "md:flex-row md:items-center md:justify-between"
-            : "md:flex-row md:items-center md:justify-end",
+          "flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center md:px-6",
+          isDirty ? "sm:justify-between" : "sm:justify-end",
         )}
       >
         {isDirty ? (
-          <p className="text-sm text-foreground">{dirtyMessage}</p>
+          <p className="min-w-0 flex-1 text-sm text-foreground sm:pr-4">
+            {dirtyMessage}
+          </p>
         ) : null}
 
-        <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+        <div className="flex shrink-0 flex-nowrap items-center justify-end gap-2 sm:gap-3">
           {showReset ? (
             <Button
               type="button"
               variant="destructive"
               onClick={onResetDefaults}
               disabled={isSaving || isResetting}
+              className="shrink-0"
             >
               {isResetting ? <Loader2 className="size-4 animate-spin" /> : null}
               Restaurar defaults
@@ -68,6 +71,7 @@ export function SettingsFormFooter({
             variant="outline"
             onClick={onCancel}
             disabled={isSaving || isResetting || !isDirty}
+            className="shrink-0"
           >
             Cancelar
           </Button>
@@ -75,9 +79,10 @@ export function SettingsFormFooter({
             type="button"
             onClick={onSave}
             disabled={isSaving || isResetting || !isDirty}
+            className="shrink-0"
           >
             {isSaving ? <Loader2 className="size-4 animate-spin" /> : null}
-            Guardar cambios
+            {saveLabel}
           </Button>
         </div>
       </div>

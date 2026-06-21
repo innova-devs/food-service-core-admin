@@ -79,12 +79,13 @@ export function TablesLayoutFooter({
           ) : null}
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
+        <div className="flex shrink-0 flex-nowrap items-center justify-end gap-2 sm:gap-3">
           <Button
             type="button"
             variant="outline"
             onClick={onAddTable}
             disabled={actionsDisabled || !hasEnvironments}
+            className="shrink-0"
             title={
               !hasEnvironments
                 ? "Creá al menos un ambiente antes de agregar mesas"
@@ -96,6 +97,7 @@ export function TablesLayoutFooter({
           </Button>
           <Button
             type="button"
+            className="shrink-0"
             title="Envía posición, forma y rotación de las mesas de este ambiente"
             onClick={onSaveLayout}
             disabled={actionsDisabled || !canSaveLayout || !isLayoutDirty}
