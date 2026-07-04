@@ -1,0 +1,21 @@
+# Despliegue en VPS usando imagen preconstruida (sin código fuente).
+# NPM debe apuntar a food-service-admin:3000 (misma red Docker).
+# Requiere .env con API y DOCKER_IMAGE.
+
+services:
+  app:
+    image: ${DOCKER_IMAGE}
+    container_name: food-service-admin
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - API=${API}
+    expose:
+      - "3000"
+    networks:
+      - npm_network
+
+networks:
+  npm_network:
+    external: true
+    name: proxy-network

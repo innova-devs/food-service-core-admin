@@ -6,7 +6,6 @@ out
 Dockerfile
 docker-compose.yml
 .dockerignore
-Caddyfile
 npm-debug.log*
 yarn-error.log*
 README.md

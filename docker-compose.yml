@@ -5,29 +5,32 @@ services:
       args:
         NEXT_PUBLIC_API: ${NEXT_PUBLIC_API}
         NEXT_PUBLIC_SOCKET_URL: ${NEXT_PUBLIC_SOCKET_URL}
-    image: food-service-core-admin:latest
+    image: ${DOCKER_IMAGE}
     restart: unless-stopped
     environment:
       - NODE_ENV=production
       - API=${API}
     expose:
       - "3000"
+    networks:
+      - app_net
 
-  caddy:
-    image: caddy:2-alpine
+  nginx-proxy-manager:
+    image: jc21/nginx-proxy-manager:latest
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
-    environment:
-      - DOMAIN=${DOMAIN}
+      - "81:81"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - app
+      - npm_data:/data
+      - npm_letsencrypt:/etc/letsencrypt
+    networks:
+      - app_net
 
 volumes:
-  caddy_data:
-  caddy_config:
+  npm_data:
+  npm_letsencrypt:
+
+networks:
+  app_net:
