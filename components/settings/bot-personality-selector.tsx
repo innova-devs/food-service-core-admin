@@ -19,7 +19,6 @@ import {
 } from "@/components/ui/card"
 import {
   fetchBotPersonalities,
-  patchAdminBusinessConfig,
   type BotPersonalityOption,
   type BotPersonalitySampleResponse,
 } from "@/lib/requests/business-config"
@@ -27,7 +26,7 @@ import { parseBotUserMessage } from "@/lib/whatsapp-bot-message"
 
 interface BotPersonalitySelectorProps {
   selectedPersonalityId: string
-  onPersonalityUpdated: () => void
+  onPersonalitySelect: (personalityId: string) => void
 }
 
 function ConversationSample({
@@ -60,11 +59,10 @@ function ConversationSample({
 
 export function BotPersonalitySelector({
   selectedPersonalityId,
-  onPersonalityUpdated,
+  onPersonalitySelect,
 }: BotPersonalitySelectorProps) {
   const [personalities, setPersonalities] = useState<BotPersonalityOption[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [selectingId, setSelectingId] = useState<string | null>(null)
 
   const loadPersonalities = useCallback(async () => {
     setIsLoading(true)
@@ -91,28 +89,9 @@ export function BotPersonalitySelector({
     void loadPersonalities()
   }, [loadPersonalities])
 
-  const handleSelect = async (personality: BotPersonalityOption) => {
+  const handleSelect = (personality: BotPersonalityOption) => {
     if (personality.id === selectedPersonalityId) return
-
-    setSelectingId(personality.id)
-    try {
-      await patchAdminBusinessConfig({ bot_personality_id: personality.id })
-      onPersonalityUpdated()
-      toast.success(`Personalidad "${personality.name}" activada`)
-    } catch (e) {
-      const message = isAxiosError(e)
-        ? (e.response?.data as { message?: string; error?: string })?.message ??
-          (e.response?.data as { message?: string; error?: string })?.error ??
-          e.message
-        : "No se pudo cambiar la personalidad del bot."
-      toast.error(
-        typeof message === "string" && message
-          ? message
-          : "No se pudo cambiar la personalidad del bot.",
-      )
-    } finally {
-      setSelectingId(null)
-    }
+    onPersonalitySelect(personality.id)
   }
 
   if (isLoading) {
@@ -135,7 +114,6 @@ export function BotPersonalitySelector({
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {personalities.map((personality) => {
         const isSelected = personality.id === selectedPersonalityId
-        const isSelecting = selectingId === personality.id
 
         return (
           <Card
@@ -179,17 +157,9 @@ export function BotPersonalitySelector({
               <CardFooter className="mt-auto justify-end border-t bg-muted/20 pt-4">
                 <Button
                   type="button"
-                  disabled={selectingId !== null}
-                  onClick={() => void handleSelect(personality)}
+                  onClick={() => handleSelect(personality)}
                 >
-                  {isSelecting ? (
-                    <>
-                      <Loader2 className="size-4 animate-spin" />
-                      Guardando…
-                    </>
-                  ) : (
-                    "Usar esta personalidad"
-                  )}
+                  Usar esta personalidad
                 </Button>
               </CardFooter>
             ) : null}

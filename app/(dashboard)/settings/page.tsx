@@ -23,6 +23,8 @@ import { useUnsavedChangesToast } from "@/hooks/use-unsaved-changes-toast"
 
 type SettingsData = AdminBusinessConfig
 
+const PATCH_EXCLUDED_KEYS = new Set<keyof SettingsData>(["bot_personality"])
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState<SettingsData | null>(null)
   const [initialSettings, setInitialSettings] = useState<SettingsData | null>(null)
@@ -63,6 +65,7 @@ export default function SettingsPage() {
     if (!settings || !initialSettings) return {}
     const entries = Object.entries(settings).filter(([key, value]) => {
       const typedKey = key as keyof SettingsData
+      if (PATCH_EXCLUDED_KEYS.has(typedKey)) return false
       return value !== initialSettings[typedKey]
     })
     return Object.fromEntries(entries) as AdminBusinessConfigPatch
@@ -149,12 +152,6 @@ export default function SettingsPage() {
     toast.info("Cambios descartados")
   }
 
-  const handlePersonalityUpdated = useCallback(async () => {
-    const refreshed = await fetchAdminBusinessConfig()
-    setSettings(refreshed)
-    setInitialSettings(refreshed)
-  }, [])
-
   const handleResetDefaults = async () => {
     setIsResetting(true)
     try {
@@ -221,12 +218,14 @@ export default function SettingsPage() {
                 <p className="text-sm font-medium">Personalidad del asistente</p>
                 <p className="text-sm text-muted-foreground">
                   Elegí el tono de voz del asistente de WhatsApp. Compará los ejemplos
-                  antes de confirmar el cambio.
+                  y guardá la configuración para aplicar los cambios.
                 </p>
               </div>
               <BotPersonalitySelector
                 selectedPersonalityId={settings.bot_personality_id}
-                onPersonalityUpdated={handlePersonalityUpdated}
+                onPersonalitySelect={(personalityId) =>
+                  updateSetting("bot_personality_id", personalityId)
+                }
               />
             </div>
           ) : null}
