@@ -19,11 +19,11 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Switch } from "@/components/ui/switch"
+import { RichTextEditor } from "@/components/editor/rich-text-editor"
 import {
   ANNOUNCEMENT_TARGET_ROLES,
   ROLE_LABELS,
@@ -122,7 +122,7 @@ export function AnnouncementFormSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex w-full flex-col gap-0 overflow-y-auto sm:max-w-xl">
+      <SheetContent className="flex w-full flex-col gap-0 overflow-y-auto sm:max-w-xl" style={{ padding: "2rem" }}>
         <SheetHeader className="border-b pb-4">
           <SheetTitle>{isEditing ? "Editar anuncio" : "Nuevo anuncio"}</SheetTitle>
           <SheetDescription>
@@ -150,16 +150,20 @@ export function AnnouncementFormSheet({
 
           {/* Contenido HTML */}
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="bodyHtml">Contenido (HTML)</Label>
-            <Textarea
-              id="bodyHtml"
-              placeholder="<p>Escribí el contenido del anuncio en HTML...</p>"
-              className="min-h-[160px] font-mono text-sm"
-              {...form.register("bodyHtml")}
+            <Label>Contenido</Label>
+            <Controller
+              control={form.control}
+              name="bodyHtml"
+              render={({ field }) => (
+                <RichTextEditor
+                  value={field.value}
+                  onChange={field.onChange}
+                  placeholder="Escribí el contenido del anuncio..."
+                  minHeight="180px"
+                  disabled={isSaving}
+                />
+              )}
             />
-            <p className="text-xs text-muted-foreground">
-              Se aceptan tags: p, strong, em, ul, ol, li, a, h1–h3, img, etc. Se sanitiza al guardar.
-            </p>
             {form.formState.errors.bodyHtml && (
               <p className="text-xs text-destructive">
                 {form.formState.errors.bodyHtml.message}

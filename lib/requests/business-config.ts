@@ -43,6 +43,8 @@ export interface AdminBusinessConfig {
   checkout_enabled: boolean
   delivery_enabled: boolean
   takeaway_enabled: boolean
+  /** Delivery con flota externa (PedidosYa, etc.). Excluyente con delivery_enabled. */
+  external_delivery_enabled: boolean
   pickup_instructions: string | null
   humanize_messages: boolean
   bot_personality_id: string
@@ -58,6 +60,7 @@ function normalizeAdminBusinessConfig(data: AdminBusinessConfig): AdminBusinessC
     ...data,
     delivery_enabled: data.delivery_enabled ?? true,
     takeaway_enabled: data.takeaway_enabled ?? false,
+    external_delivery_enabled: data.external_delivery_enabled ?? false,
     pickup_instructions: data.pickup_instructions ?? null,
     humanize_messages: data.humanize_messages ?? false,
     bot_personality_id: data.bot_personality_id ?? "",

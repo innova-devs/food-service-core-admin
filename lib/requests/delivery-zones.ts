@@ -142,3 +142,88 @@ export async function deleteAdminDeliveryZone(id: string): Promise<string> {
   )
   return typeof data.id === "string" ? data.id : id
 }
+
+/** Actualiza solo el fee de una zona (p.ej. aplicar sugerencia PedidosYa). */
+export async function patchAdminDeliveryZoneFee(
+  id: string,
+  deliveryFee: number,
+): Promise<DeliveryZone> {
+  const { data } = await api.patch<DeliveryZoneRaw>(
+    `${ADMIN_DELIVERY_ZONES_PATH}/${id}`,
+    { deliveryFee },
+  )
+  return mapDeliveryZone(data)
+}
+
+export type ZoneCalibrationAction =
+  | "increase"
+  | "keep"
+  | "optional_decrease"
+  | "insufficient_data"
+
+export interface DeliveryZoneCalibrationSample {
+  kind: "near" | "mid" | "far"
+  label: string
+  lat: number
+  lng: number
+  ok: boolean
+  price: number | null
+  distanceMeters: number | null
+  error: string | null
+}
+
+export interface DeliveryZoneCalibrationZone {
+  zoneId: string
+  zoneName: string
+  currentFee: number
+  pedidosYa: {
+    min: number | null
+    max: number | null
+    avg: number | null
+    successfulSamples: number
+    failedSamples: number
+  }
+  suggestedFee: number | null
+  safetyBufferPercent: number
+  action: ZoneCalibrationAction
+  message: string
+  samples: DeliveryZoneCalibrationSample[]
+}
+
+export interface DeliveryZoneCalibrationReport {
+  available: true
+  disclaimer: string
+  safetyBufferPercent: number
+  origin: {
+    lat: number
+    lng: number
+    address: string
+    city: string
+    businessName: string
+  }
+  zones: DeliveryZoneCalibrationZone[]
+  generatedAt: string
+}
+
+export interface DeliveryZoneCalibrationStatus {
+  configured: boolean
+  safetyBufferPercent: number
+  isTest: boolean
+}
+
+export async function fetchDeliveryZoneCalibrationStatus(): Promise<DeliveryZoneCalibrationStatus> {
+  const { data } = await api.get<DeliveryZoneCalibrationStatus>(
+    `${ADMIN_DELIVERY_ZONES_PATH}/calibration/status`,
+  )
+  return data
+}
+
+export async function postDeliveryZoneCalibration(params?: {
+  safetyBufferPercent?: number
+}): Promise<DeliveryZoneCalibrationReport> {
+  const { data } = await api.post<DeliveryZoneCalibrationReport>(
+    `${ADMIN_DELIVERY_ZONES_PATH}/calibration`,
+    params ?? {},
+  )
+  return data
+}

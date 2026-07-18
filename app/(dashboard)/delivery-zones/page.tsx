@@ -21,17 +21,30 @@ import {
 import { ZonesList } from "@/components/delivery-zones/zones-list"
 import { ZoneFormModal } from "@/components/delivery-zones/zone-form-modal"
 import { DeleteZoneDialog } from "@/components/delivery-zones/delete-zone-dialog"
+import { CalibrationResultModal } from "@/components/delivery-zones/calibration-result-modal"
 import type {
   DeliveryZone,
   DeliveryZonesMapCenter,
   ZoneFormData,
 } from "@/components/delivery-zones/types"
+import { fetchAdminBusinessConfig } from "@/lib/requests/business-config"
 import {
   createAdminDeliveryZone,
   deleteAdminDeliveryZone,
   fetchAdminDeliveryZones,
   patchAdminDeliveryZone,
+  patchAdminDeliveryZoneFee,
+  postDeliveryZoneCalibration,
+  type DeliveryZoneCalibrationReport,
+  type DeliveryZoneCalibrationZone,
 } from "@/lib/requests/delivery-zones"
+
+function getAxiosErrorMessage(e: unknown, fallback: string): string {
+  if (!isAxiosError(e)) return fallback
+  const data = e.response?.data as { message?: string; error?: string } | undefined
+  const msg = data?.message ?? data?.error ?? e.message
+  return typeof msg === "string" && msg ? msg : fallback
+}
 
 // Dynamic import for the map component (Leaflet requires window)
 const ZoneMap = dynamic(
@@ -71,6 +84,14 @@ export default function DeliveryZonesPage() {
   const [deletingZone, setDeletingZone] = useState<DeliveryZone | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
+  // PedidosYa calibration (solo con delivery externo activo)
+  const [externalDeliveryEnabled, setExternalDeliveryEnabled] = useState(false)
+  const [isCalibrating, setIsCalibrating] = useState(false)
+  const [calibrationModalOpen, setCalibrationModalOpen] = useState(false)
+  const [calibrationReport, setCalibrationReport] =
+    useState<DeliveryZoneCalibrationReport | null>(null)
+  const [applyingZoneId, setApplyingZoneId] = useState<string | null>(null)
+
   const loadZones = useCallback(async () => {
     setIsLoading(true)
     try {
@@ -78,24 +99,98 @@ export default function DeliveryZonesPage() {
       setZones(data.items)
       setMapCenter(data.mapCenter)
     } catch (e) {
-      const msg = isAxiosError(e)
-        ? (e.response?.data as { message?: string; error?: string })?.message ??
-          (e.response?.data as { message?: string; error?: string })?.error ??
-          e.message
-        : "No se pudieron cargar las zonas de entrega."
       toast.error(
-        typeof msg === "string" && msg
-          ? msg
-          : "No se pudieron cargar las zonas de entrega.",
+        getAxiosErrorMessage(e, "No se pudieron cargar las zonas de entrega."),
       )
     } finally {
       setIsLoading(false)
     }
   }, [])
 
+  const loadConfigFlags = useCallback(async () => {
+    try {
+      const cfg = await fetchAdminBusinessConfig()
+      setExternalDeliveryEnabled(cfg.external_delivery_enabled)
+    } catch {
+      setExternalDeliveryEnabled(false)
+    }
+  }, [])
+
   useEffect(() => {
     void loadZones()
-  }, [loadZones])
+    void loadConfigFlags()
+  }, [loadZones, loadConfigFlags])
+
+  const handleCalibrateWithPedidosYa = async () => {
+    if (zones.length === 0) {
+      toast.error("Creá al menos una zona antes de comparar con PedidosYa.")
+      return
+    }
+
+    setIsCalibrating(true)
+    try {
+      const report = await postDeliveryZoneCalibration()
+      setCalibrationReport(report)
+      setCalibrationModalOpen(true)
+      toast.success("Comparación con PedidosYa lista")
+    } catch (e) {
+      toast.error(
+        getAxiosErrorMessage(
+          e,
+          "No se pudo comparar con PedidosYa. Probá de nuevo más tarde.",
+        ),
+      )
+    } finally {
+      setIsCalibrating(false)
+    }
+  }
+
+  const handleApplyCalibrationSuggestion = async (
+    zoneRow: DeliveryZoneCalibrationZone,
+  ) => {
+    if (zoneRow.suggestedFee == null) return
+
+    const localZone = zones.find((z) => z.id === zoneRow.zoneId)
+    if (!localZone) {
+      toast.error("No se encontró la zona para aplicar el fee.")
+      return
+    }
+
+    setApplyingZoneId(zoneRow.zoneId)
+    try {
+      const updated = await patchAdminDeliveryZoneFee(
+        zoneRow.zoneId,
+        zoneRow.suggestedFee,
+      )
+      setZones((prev) =>
+        prev.map((z) => (z.id === updated.id ? updated : z)),
+      )
+      setCalibrationReport((prev) =>
+        prev
+          ? {
+              ...prev,
+              zones: prev.zones.map((z) =>
+                z.zoneId === zoneRow.zoneId
+                  ? {
+                      ...z,
+                      currentFee: zoneRow.suggestedFee!,
+                      action: "keep",
+                      message: `Fee actualizado a $${zoneRow.suggestedFee}.`,
+                    }
+                  : z,
+              ),
+            }
+          : prev,
+      )
+      toast.success(`Fee de “${zoneRow.zoneName}” actualizado`)
+    } catch (e) {
+      toast.error(
+        getAxiosErrorMessage(e, "No se pudo aplicar el fee sugerido."),
+      )
+    } finally {
+      setApplyingZoneId(null)
+    }
+  }
 
   const handleCreateNew = () => {
     setEditingZone(null)
@@ -277,10 +372,34 @@ export default function DeliveryZonesPage() {
               </div>
             </div>
 
-            <Button onClick={handleCreateNew} className="mb-4 w-full">
-              <Plus className="size-4" />
-              Nueva zona
-            </Button>
+            <div className="mb-4 flex flex-col gap-2">
+              <Button onClick={handleCreateNew} className="w-full">
+                <Plus className="size-4" />
+                Nueva zona
+              </Button>
+              {/* TODO: reactivar cuando haya tokens PedidosYa en el SaaS
+              {externalDeliveryEnabled ? (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => void handleCalibrateWithPedidosYa()}
+                  disabled={isCalibrating || isLoading || zones.length === 0}
+                >
+                  {isCalibrating ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      Comparando…
+                    </>
+                  ) : (
+                    <>
+                      <Scale className="size-4" />
+                      Comparar con PedidosYa
+                    </>
+                  )}
+                </Button>
+              ) : null}
+              */}
+            </div>
 
             {isLoading ? (
               <div className="flex flex-col gap-2">
@@ -381,6 +500,14 @@ export default function DeliveryZonesPage() {
         zone={deletingZone}
         onConfirm={handleConfirmDelete}
         isDeleting={isDeleting}
+      />
+
+      <CalibrationResultModal
+        open={calibrationModalOpen}
+        onOpenChange={setCalibrationModalOpen}
+        report={calibrationReport}
+        applyingZoneId={applyingZoneId}
+        onApply={(zone) => void handleApplyCalibrationSuggestion(zone)}
       />
     </div>
   )

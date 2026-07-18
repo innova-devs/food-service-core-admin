@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Building2, Shield } from "lucide-react"
+import { Building2, Megaphone, Shield } from "lucide-react"
 
 import {
   Sidebar,
@@ -18,11 +18,14 @@ import {
 } from "@/components/ui/sidebar"
 
 const BUSINESSES_HREF = "/super-admin/businesses"
+const ANNOUNCEMENTS_HREF = "/super-admin/announcements"
 
 export function SuperAdminSidebar() {
   const pathname = usePathname()
   const businessesActive =
     pathname === BUSINESSES_HREF || pathname.startsWith(`${BUSINESSES_HREF}/`)
+  const announcementsActive =
+    pathname === ANNOUNCEMENTS_HREF || pathname.startsWith(`${ANNOUNCEMENTS_HREF}/`)
 
   return (
     <Sidebar>
@@ -44,6 +47,14 @@ export function SuperAdminSidebar() {
                   <Link href={BUSINESSES_HREF}>
                     <Building2 className="size-4" />
                     <span>Negocios</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={announcementsActive}>
+                  <Link href={ANNOUNCEMENTS_HREF}>
+                    <Megaphone className="size-4" />
+                    <span>Anuncios</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

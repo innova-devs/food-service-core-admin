@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Bell, User } from "lucide-react"
+import { Bell, Megaphone, User } from "lucide-react"
 
 import { clearAuthCookie, getUserRoleFromCookie } from "@/lib/auth"
 import { useAdminSocket } from "@/contexts/admin-socket-context"
+import { useAnnouncementsInboxOptional } from "@/contexts/announcements-inbox-context"
 import type { UserRole } from "@/lib/access-control"
 
 import { SidebarTrigger } from "@/components/ui/sidebar"
@@ -44,7 +45,12 @@ export function Header() {
     removeNotification,
     acknowledgeWhatsappSupportConversation,
   } = useAdminSocket()
+  const announcementsInbox = useAnnouncementsInboxOptional()
   const canSeeNotifications = role === "ADMIN" || role === "OWNER"
+  const canSeeAnnouncements =
+    role !== "SUPER_ADMIN" &&
+    role !== "UNKNOWN" &&
+    announcementsInbox != null
 
   useEffect(() => {
     setRole(getUserRoleFromCookie())
@@ -78,6 +84,29 @@ export function Header() {
       <Separator orientation="vertical" className="mr-2 h-4" />
       <div className="flex-1" />
       <div className="flex items-center gap-2">
+        {canSeeAnnouncements ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="relative"
+            onClick={() => announcementsInbox.openInbox()}
+            disabled={
+              announcementsInbox.isLoading ||
+              announcementsInbox.announcements.length === 0
+            }
+            title="Anuncios"
+          >
+            <Megaphone className="size-4" />
+            {announcementsInbox.unreadCount > 0 ? (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-destructive-foreground">
+                {announcementsInbox.unreadCount > 9
+                  ? "9+"
+                  : announcementsInbox.unreadCount}
+              </span>
+            ) : null}
+            <span className="sr-only">Anuncios</span>
+          </Button>
+        ) : null}
         {canSeeNotifications ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

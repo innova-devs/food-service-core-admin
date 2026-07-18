@@ -110,9 +110,20 @@ export default function SettingsPage() {
       return false
     }
 
-    if (!settings.delivery_enabled && !settings.takeaway_enabled) {
+    if (settings.delivery_enabled && settings.external_delivery_enabled) {
       toast.error(
-        "No podés desactivar envío y retiro a la vez: dejá al menos uno habilitado.",
+        "Envío propio y delivery externo son excluyentes: dejá solo uno activo.",
+      )
+      return false
+    }
+
+    if (
+      !settings.delivery_enabled &&
+      !settings.takeaway_enabled &&
+      !settings.external_delivery_enabled
+    ) {
+      toast.error(
+        "Dejá al menos una opción activa: envío propio, delivery externo o retiro en local.",
       )
       return false
     }
@@ -361,21 +372,50 @@ export default function SettingsPage() {
 
         <SettingsSection
           title="Entrega y retiro"
-          description="Al menos una opción debe estar activa: envío a domicilio o retiro en local"
+          description="Al menos una opción debe estar activa. Envío propio y delivery externo son excluyentes."
         >
           <ToggleField
             id="delivery-enabled"
-            label="Envío a domicilio"
-            description="Permitir pedidos con entrega"
+            label="Envío a domicilio (propio)"
+            description="Delivery con flota o logística propia del local"
             checked={settings.delivery_enabled}
             onCheckedChange={(checked) => {
-              if (!checked && !settings.takeaway_enabled) {
+              if (
+                !checked &&
+                !settings.takeaway_enabled &&
+                !settings.external_delivery_enabled
+              ) {
                 toast.error(
-                  "No podés desactivar envío y retiro a la vez: habilitá retiro en local o dejá el envío activo.",
+                  "No podés dejar todo apagado: habilitá delivery externo o retiro en local.",
                 )
                 return
               }
               updateSetting("delivery_enabled", checked)
+              if (checked && settings.external_delivery_enabled) {
+                updateSetting("external_delivery_enabled", false)
+              }
+            }}
+          />
+          <ToggleField
+            id="external-delivery-enabled"
+            label="Delivery externo (PedidosYa)"
+            description="Usá flota externa. Desactiva el envío propio y habilita la calibración de tarifas en Zonas de envío."
+            checked={settings.external_delivery_enabled}
+            onCheckedChange={(checked) => {
+              if (
+                !checked &&
+                !settings.takeaway_enabled &&
+                !settings.delivery_enabled
+              ) {
+                toast.error(
+                  "No podés dejar todo apagado: habilitá envío propio o retiro en local.",
+                )
+                return
+              }
+              updateSetting("external_delivery_enabled", checked)
+              if (checked && settings.delivery_enabled) {
+                updateSetting("delivery_enabled", false)
+              }
             }}
           />
           <ToggleField
@@ -384,9 +424,13 @@ export default function SettingsPage() {
             description="Permitir que el cliente retire el pedido en el local"
             checked={settings.takeaway_enabled}
             onCheckedChange={(checked) => {
-              if (!checked && !settings.delivery_enabled) {
+              if (
+                !checked &&
+                !settings.delivery_enabled &&
+                !settings.external_delivery_enabled
+              ) {
                 toast.error(
-                  "No podés desactivar envío y retiro a la vez: habilitá envío a domicilio o dejá el retiro activo.",
+                  "No podés dejar todo apagado: habilitá envío propio o delivery externo.",
                 )
                 return
               }
