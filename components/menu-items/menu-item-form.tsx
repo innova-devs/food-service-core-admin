@@ -22,12 +22,14 @@ import { SettingsFormFooter } from "@/components/settings/settings-form-footer"
 import { FormSection } from "./form-section"
 import { InputField } from "./input-field"
 import { ToggleSwitch } from "./toggle-switch"
-import { ImageUploader } from "./image-uploader"
+import { ImageUploader, emptyImageUploaderValue, type ImageUploaderValue } from "./image-uploader"
 import {
   createAdminMenuItem,
+  deleteAdminMenuItemImage,
   fetchAdminMenuCategoriesOptions,
   fetchAdminMenuItemById,
   patchAdminMenuItem,
+  uploadAdminMenuItemImage,
   type MenuCategoryOption,
 } from "@/lib/requests/menu-items"
 import {
@@ -59,7 +61,7 @@ interface MenuItemFormData {
   ingredients: string
   ingredientsNotes: string
   preparation: string
-  imageUrl: string | null
+  image: ImageUploaderValue
   discountEnabled: boolean
   discountType: "PERCENT" | "FIXED"
   discountValue: string
@@ -82,7 +84,7 @@ const initialFormData: MenuItemFormData = {
   ingredients: "",
   ingredientsNotes: "",
   preparation: "",
-  imageUrl: null,
+  image: emptyImageUploaderValue(null),
   discountEnabled: false,
   discountType: "PERCENT",
   discountValue: "",
@@ -101,7 +103,9 @@ function normalizeFormData(data: MenuItemFormData) {
     ingredients: data.ingredients.trim(),
     ingredientsNotes: data.ingredientsNotes.trim(),
     preparation: data.preparation.trim(),
-    imageUrl: data.imageUrl,
+    imagePreviewUrl: data.image.previewUrl,
+    imageFileName: data.image.file?.name ?? null,
+    imageRemoved: data.image.removed,
     discountEnabled: data.discountEnabled,
     discountType: data.discountType,
     discountValue: data.discountValue.trim().replace(",", "."),
@@ -123,7 +127,9 @@ function isFormDataEqual(a: MenuItemFormData, b: MenuItemFormData): boolean {
     left.ingredients === right.ingredients &&
     left.ingredientsNotes === right.ingredientsNotes &&
     left.preparation === right.preparation &&
-    left.imageUrl === right.imageUrl &&
+    left.imagePreviewUrl === right.imagePreviewUrl &&
+    left.imageFileName === right.imageFileName &&
+    left.imageRemoved === right.imageRemoved &&
     left.discountEnabled === right.discountEnabled &&
     left.discountType === right.discountType &&
     left.discountValue === right.discountValue
@@ -139,7 +145,7 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [categories, setCategories] = useState<MenuCategoryOption[]>([])
-  const [imageUrlBlocked, setImageUrlBlocked] = useState(false)
+  const [imageBlocked, setImageBlocked] = useState(false)
   const [aiModalOpen, setAiModalOpen] = useState(false)
   const [savedItemId, setSavedItemId] = useState<string | null>(null)
   const [aiModalSource, setAiModalSource] = useState<"generate" | "edit-existing">(
@@ -159,10 +165,10 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
   const [confirmGenerateOpen, setConfirmGenerateOpen] = useState(false)
 
   const handleImageBlockingChange = useCallback((blocked: boolean) => {
-    setImageUrlBlocked(blocked)
+    setImageBlocked(blocked)
     if (!blocked) {
       setErrors((prev) =>
-        prev.imageUrl ? { ...prev, imageUrl: undefined } : prev
+        prev.image ? { ...prev, image: undefined } : prev
       )
     }
   }, [])
@@ -214,7 +220,7 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
             ingredients: item.ingredients || "",
             ingredientsNotes: item.ingredientsNotes || "",
             preparation: item.preparation || "",
-            imageUrl: item.imageUrl,
+            image: emptyImageUploaderValue(item.imageUrl),
             discountEnabled: item.discount != null,
             discountType: item.discount?.discountType ?? "PERCENT",
             discountValue: item.discount ? String(item.discount.discountValue) : "",
@@ -280,8 +286,8 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
       newErrors.price = "Ingresa un precio válido"
     }
 
-    if (imageUrlBlocked) {
-      newErrors.imageUrl = "Revisa la URL de la imagen"
+    if (imageBlocked) {
+      newErrors.image = "Revisa la imagen seleccionada"
     }
 
     if (formData.discountEnabled) {
@@ -334,7 +340,6 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
         ingredients: formData.ingredients.trim() || null,
         ingredientsNotes: formData.ingredientsNotes.trim() || null,
         preparation: formData.preparation.trim() || null,
-        image: formData.imageUrl,
         price: {
           amount: priceValue,
           currencyCode: formData.currencyCode.trim() || DEFAULT_CURRENCY_CODE,
@@ -343,13 +348,40 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
       }
 
       let savedId: string
+      let savedImageUrl: string | null = formData.image.previewUrl
       if (mode === "create") {
         const created = await createAdminMenuItem(payload)
         savedId = created.id
+        if (formData.image.file) {
+          const withImage = await uploadAdminMenuItemImage(
+            savedId,
+            formData.image.file,
+          )
+          savedImageUrl = withImage.imageUrl
+        } else {
+          savedImageUrl = created.imageUrl
+        }
       } else {
         await patchAdminMenuItem(itemId!, payload)
         savedId = itemId!
-        setInitialFormDataState({ ...formData })
+        if (formData.image.file) {
+          const withImage = await uploadAdminMenuItemImage(
+            savedId,
+            formData.image.file,
+          )
+          savedImageUrl = withImage.imageUrl
+        } else if (formData.image.removed) {
+          await deleteAdminMenuItemImage(savedId)
+          savedImageUrl = null
+        }
+        setInitialFormDataState({
+          ...formData,
+          image: emptyImageUploaderValue(savedImageUrl),
+        })
+        setFormData((prev) => ({
+          ...prev,
+          image: emptyImageUploaderValue(savedImageUrl),
+        }))
       }
 
       toast.success(
@@ -365,7 +397,9 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
       setAiModalOpen(true)
     } catch (e) {
       const msg = isAxiosError(e)
-        ? (e.response?.data as { message?: string })?.message ?? e.message
+        ? (e.response?.data as { error?: string; message?: string })?.error ??
+          (e.response?.data as { message?: string })?.message ??
+          e.message
         : "Error al guardar el producto"
       toast.error(typeof msg === "string" ? msg : "Error al guardar el producto")
     } finally {
@@ -711,15 +745,13 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
           <FormSection title="Imagen">
             <ImageUploader
               id="image"
-              label="Enlace a la imagen"
-              value={formData.imageUrl}
-              onChange={(value) => updateField("imageUrl", value)}
+              label="Imagen del producto"
+              value={formData.image}
+              onChange={(value) => updateField("image", value)}
               disabled={isSaving}
               onBlockingValidationChange={handleImageBlockingChange}
+              error={errors.image}
             />
-            {errors.imageUrl && (
-              <p className="text-sm text-destructive">{errors.imageUrl}</p>
-            )}
           </FormSection>
         </div>
       </div>

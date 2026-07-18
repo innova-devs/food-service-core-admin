@@ -45,7 +45,10 @@ export interface MenuItem {
   menuCategoryId?: string | null
   menuCategoryName?: string | null
   menuCategoryTag?: string | null
+  /** URL pública lista para <img src>. */
   imageUrl: string | null
+  /** Key del objeto en R2 (path). */
+  imageKey: string | null
   available: boolean
   featured: boolean
   price: number | null

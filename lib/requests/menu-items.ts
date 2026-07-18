@@ -1,4 +1,5 @@
 import { api } from "@/lib/api"
+import { resolveMenuItemImageUrl } from "@/lib/menu-item-image"
 import type { MenuItem, MenuItemDiscount } from "@/components/menu-items/types"
 
 export const ADMIN_MENU_ITEMS_PATH = "/admin/menu-items"
@@ -27,7 +28,6 @@ export interface UpsertAdminMenuItemInput {
   categoryId?: string | null
   categoryTag?: string | null
   sectionId?: string | null
-  image?: string | null
   isAvailable?: boolean
   isFeatured?: boolean
   servesPeople?: number | null
@@ -83,6 +83,8 @@ interface AdminMenuItemRaw {
   image?: string | null
   image_url?: string | null
   imageUrl?: string | null
+  image_key?: string | null
+  imageKey?: string | null
   is_available?: boolean | null
   isAvailable?: boolean | null
   is_featured?: boolean | null
@@ -245,7 +247,11 @@ function mapAdminMenuItem(raw: AdminMenuItemRaw): MenuItem {
           menuCategory?.name ?? raw.menuCategoryName ?? raw.menu_category_name,
         ),
     ),
-    imageUrl: toStringOrNull(raw.imageUrl ?? raw.image_url ?? raw.image),
+    imageKey: toStringOrNull(raw.imageKey ?? raw.image_key),
+    imageUrl: resolveMenuItemImageUrl({
+      imageUrl: toStringOrNull(raw.imageUrl ?? raw.image_url ?? raw.image),
+      imageKey: toStringOrNull(raw.imageKey ?? raw.image_key),
+    }),
     available: toBoolean(raw.isAvailable ?? raw.is_available, true),
     featured: toBoolean(raw.isFeatured ?? raw.is_featured, false),
     ...resolveMenuItemPrice(raw),
@@ -369,7 +375,6 @@ function toApiPayload(input: UpsertAdminMenuItemInput): Record<string, unknown> 
     ...(input.preparation !== undefined ? { preparation: input.preparation } : {}),
     ...(input.servesPeople !== undefined ? { servesPeople: input.servesPeople } : {}),
     ...(input.isFeatured !== undefined ? { isFeatured: input.isFeatured } : {}),
-    ...(input.image !== undefined ? { image: input.image } : {}),
     ...(input.isAvailable !== undefined ? { isAvailable: input.isAvailable } : {}),
     ...(input.ingredientsNotes !== undefined
       ? { ingredientsNotes: input.ingredientsNotes }
@@ -396,6 +401,38 @@ export async function patchAdminMenuItem(
   const { data } = await api.patch<AdminMenuItemRaw>(
     `${ADMIN_MENU_ITEMS_PATH}/${id}`,
     toApiPayload(input),
+  )
+  return mapAdminMenuItem(data)
+}
+
+/** Sube o reemplaza la imagen del platillo (multipart field `image`). */
+export async function uploadAdminMenuItemImage(
+  id: string,
+  file: File,
+): Promise<MenuItem> {
+  const formData = new FormData()
+  formData.append("image", file)
+  const { data } = await api.post<AdminMenuItemRaw>(
+    `${ADMIN_MENU_ITEMS_PATH}/${id}/image`,
+    formData,
+    {
+      transformRequest: [
+        (body, headers) => {
+          if (headers && typeof headers === "object") {
+            delete (headers as Record<string, unknown>)["Content-Type"]
+          }
+          return body
+        },
+      ],
+    },
+  )
+  return mapAdminMenuItem(data)
+}
+
+/** Elimina la imagen del platillo en storage y BD. */
+export async function deleteAdminMenuItemImage(id: string): Promise<MenuItem> {
+  const { data } = await api.delete<AdminMenuItemRaw>(
+    `${ADMIN_MENU_ITEMS_PATH}/${id}/image`,
   )
   return mapAdminMenuItem(data)
 }
